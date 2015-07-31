@@ -10,6 +10,8 @@ Running this script using the correct MRC file and old model file will output
 a new model file that can be loaded properly on the new MRC file, and then
 imported into Amira for visualization and quantification using the correct
 pixel sizes.
+
+Maintains object names and colors.
 """
 
 import os
@@ -144,4 +146,7 @@ if __name__ == "__main__":
     # Cleanup
     os.remove(file_out + "~")
     shutil.rmtree(path_tmp)
- 
+
+    # Print disclaimer about meshing
+    print("SUCCESS! {0} created".format(file_out))
+    print("WARNING: Need to regenerate meshes using imodmesh")
