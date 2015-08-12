@@ -144,9 +144,10 @@ if __name__ == "__main__":
             os.remove(mod_tmp)
 
     # Cleanup
-    os.remove(file_out + "~")
+    if N > 0:
+        os.remove(file_out + "~")
     shutil.rmtree(path_tmp)
 
     # Print disclaimer about meshing
     print("SUCCESS! {0} created".format(file_out))
-    print("WARNING: Need to regenerate meshes using imodmesh")
+    print("WARNING: Need to regenerate meshes using imodmesh and update model header.")
