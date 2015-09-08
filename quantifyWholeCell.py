@@ -153,6 +153,7 @@ if __name__ == "__main__":
     mod_base = os.path.basename(os.path.splitext(mod_in)[0])
     path_tmp = os.path.join(path_out, mod_base)
     os.makedirs(path_tmp)
+    print path_tmp
 
     # Parse model file for global model values
     asciifile = os.path.join(path_tmp, mod_base + ".txt")
@@ -170,7 +171,7 @@ if __name__ == "__main__":
         usage("The units in the model's header must be given in nm/pixel.")
     axl_pix_size = int(round(zscale * lat_pix_size))
     fid.close()
-    os.remove(os.path.join(path_tmp, asciifile))
+    os.remove(os.path.join(asciifile))
 
     # Parse each object in the model file
     for i in range(0, nobj):
