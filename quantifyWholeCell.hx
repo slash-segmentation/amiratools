@@ -1,4 +1,4 @@
-# Amira
+# Amira0
 
 #//
 # Function: exportCSV
@@ -14,9 +14,9 @@
 proc exportCSV {moduleIn moduleOut fileOut} {
     set tableName [split $moduleIn "."]
     set tableName [lindex $tableName 0]
-    if {$tableName == "GeometrySurface"} {
+    if {[regexp "Geo.*" $moduleIn]} {
         create HxSurfaceArea $moduleOut
-    } elseif {$tableName == "SmoothTree"} {
+    } elseif {[regexp "Smooth.*" $moduleIn]} {
         create HxSpatialGraphStats $moduleOut
     }
     append tableName ".statistics"
@@ -691,7 +691,7 @@ proc appendn {str_in args} {
 
 
 proc workflow_mitochondrion {N} {
-    global opts
+    global base opts
     remeshGeometrySurface [appendn "GeometrySurface" $N] \
         [appendn "Remesh-Surface-" $N] 1 100 0 1
     smoothGeometrySurface [appendn "GeometrySurface" $N ".remeshed"] \
@@ -706,10 +706,10 @@ proc workflow_mitochondrion {N} {
     if {$opts(makeMovieMito)} {
         setupMovieMito $N
     }
-    #exportCSV "SmoothTree.spatialgraph" "Statistics-1" ${base}_skel.csv
-    #exportCSV "GeometrySurface.smooth" "Statistics-2" ${base}_sva.csv
-    
-
+    exportCSV [appendn "SmoothTree" $N ".spatialgraph"] \
+        [appendn "Statistics-" $N "-1"] ${base}_skel.csv
+    exportCSV [appendn "GeometrySurface" $N ".smooth"] \
+        [appendn "Statistics-" $N "-2"] ${base}_sva.csv
 }
 
 proc workflow_nucleus {} {
@@ -764,7 +764,7 @@ set opts(bbwidth) 2
 set opts(bbcolor) "1,0.5,0"
 
 # Mitochondria-specific parameters
-set opts(makeMovieMito) 1
+set opts(makeMovieMito) 0
 set opts(makeMovieMitoLong) 1
 set opts(mitocolor) "0,1,0"
 set opts(skelwidth) 3
@@ -779,14 +779,14 @@ set opts(lysocolor) "1,0,0"
 set opts(makeMovieCilium) 1
 set opts(ciliumcolor) "1,0.8,0.8"
 
+# Global parameters
+set opts(renderOnly) 1
+ 
 #//
 #
 # END INPUT PARAMETERS
 #
 #//
-
-set str [appendn "GeometrySurface" "0050" ".remeshed"]
-echo $str
 
 set wrlfiles [ glob $path_in/*.wrl ]
 set nwrlfiles [ llength $wrlfiles ]
