@@ -1,43 +1,6 @@
 # Amira
 
 #//
-# Function: appendn
-#
-#
-#//
-
-proc appendn {str_in args} {
-    foreach arg $args {
-        set str_in ${str_in}$arg
-    }
-    return $str_in
-}
-
-#//
-# Function: getModuleNames
-#
-#
-#//
-
-proc getModuleNames {N} {
-    set geosurf [appendn "GeometrySurface" $N]
-    set smoothtree [appendn "SmoothTree" $N]
-    set mn $geosurf
-    lappend mn [ appendn $geosurf ".remeshed" ]
-    lappend mn [ appendn $geosurf ".smooth" ]
-    lappend mn [ appendn $geosurf ".scanConverted" ]
-    lappend mn [ appendn $geosurf ".Spatial-Graph" ]
-    lappend mn [ appendn $smoothtree ".spatialgraph" ]
-
-    set mn [ appendn "GeometrySurface" $N ]
-    lappend mn [ appendn [lindex mn 0] ".remeshed" ]
-    lappend mn [ "Remesh-Surface-" $N ]
-
-}
-
-
-
-#//
 # Function: exportCSV
 # -----------------------------------
 # Exports data from a Spatial Graph or Geometry Surface object to a CSV file
@@ -704,6 +667,26 @@ proc renderMovie {scriptAnim movieParams} {
     "Movie-Maker-1" action setState index 0
     "Movie-Maker-1" action touch 0
     "Movie-Maker-1" fire
+}
+
+#//
+# Function: appendn
+# -----------------
+# Appends numerous input strings to one output string
+#
+# Inputs:
+#     str_in    Input string to append to
+#     args      Sub-strings to sequentially append to str_in
+#
+# Returns:
+#     str_in    String with all sub-strings appended to it
+##//
+
+proc appendn {str_in args} {
+    foreach arg $args {
+        set str_in ${str_in}$arg
+    }   
+    return $str_in
 }
 
 
