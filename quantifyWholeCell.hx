@@ -1,6 +1,43 @@
 # Amira
 
 #//
+# Function: appendn
+#
+#
+#//
+
+proc appendn {str_in args} {
+    foreach arg $args {
+        set str_in ${str_in}$arg
+    }
+    return $str_in
+}
+
+#//
+# Function: getModuleNames
+#
+#
+#//
+
+proc getModuleNames {N} {
+    set geosurf [appendn "GeometrySurface" $N]
+    set smoothtree [appendn "SmoothTree" $N]
+    set mn $geosurf
+    lappend mn [ appendn $geosurf ".remeshed" ]
+    lappend mn [ appendn $geosurf ".smooth" ]
+    lappend mn [ appendn $geosurf ".scanConverted" ]
+    lappend mn [ appendn $geosurf ".Spatial-Graph" ]
+    lappend mn [ appendn $smoothtree ".spatialgraph" ]
+
+    set mn [ appendn "GeometrySurface" $N ]
+    lappend mn [ appendn [lindex mn 0] ".remeshed" ]
+    lappend mn [ "Remesh-Surface-" $N ]
+
+}
+
+
+
+#//
 # Function: exportCSV
 # -----------------------------------
 # Exports data from a Spatial Graph or Geometry Surface object to a CSV file
@@ -49,7 +86,6 @@ proc makeCameraOrbitEvent {type N time1 time2 angle1 angle2} {
     append str "{\"$type-$N\" time setValue %0%; \"$type-$N\" fire}} "
     return $str
 }
-
 #//
 # Function: makeMaskEvent
 # -----------------------
@@ -220,42 +256,42 @@ proc makeEventListMitoShort {} {
 #     length    Duration of the movie in seconds
 #//
 
-proc makeEventListMitoLong {northo} {
+proc makeEventListMitoLong {N northo} {
     # Set the initial mask states. Start with the Bounding Box, Caption 1 (main title),
     # Caption 2 (sub-header), and Surface View 1 (raw segmentation mesh) set to visible.
-    set expr [makeMaskEvent "Bounding-Box" 1 0 1]
+    set expr [makeMaskEvent [appendn "Bounding-Box-" $N] 1 0 1]
     append expr [makeMaskEvent "Caption" 1 0 1]
     append expr [makeMaskEvent "Caption" 2 0 1]
     append expr [makeMaskEvent "Caption" 3 0 0]
     append expr [makeMaskEvent "Caption" 4 0 0]
     append expr [makeMaskEvent "Caption" 5 0 0]
-    append expr [makeMaskEvent "Ortho-Slice" 1 0 0]
-    append expr [makeMaskEvent "Surface-View" 1 0 1]
-    append expr [makeMaskEvent "Surface-View" 2 0 0]
-    append expr [makeMaskEvent "Spatial-Graph-View" 1 0 0]
+    append expr [makeMaskEvent [appendn "Ortho-Slice-" $N] 1 0 0]
+    append expr [makeMaskEvent [appendn "Surface-View-" $N] 1 0 1]
+    append expr [makeMaskEvent [appendn "Surface-View-" $N] 2 0 0]
+    append expr [makeMaskEvent [appendn "Spatial-Graph-View-" $N] 1 0 0]
 
     # Turn off the raw segmentation mesh (Surface View 1) and turn on the remeshed version
     # (Surface View 2). Transition the surface from opaque to 70% transparent so the ortho
     # slices and skeleton can be visible.
-    append expr [makeMaskEvent "Surface-View" 1 2 0]
-    append expr [makeMaskEvent "Surface-View" 2 2 1]
+    append expr [makeMaskEvent [appendn "Surface-View-" $N] 1 2 0]
+    append expr [makeMaskEvent [appendn "Surface-View-" $N] 2 2 1]
     append expr [makeMaskEvent "Caption" 2 2 0]
     append expr [makeMaskEvent "Caption" 3 2 1]
-    append expr [makeTranspEvent "Surface-View" 2 2 4 0 0.7]
+    append expr [makeTranspEvent [appendn "Surface-View-" $N] 2 2 4 0 0.7]
 
     # Play through the ortho slices of the segmentation with the transparent surface
     # rendered on top. Slices go from top to bottom, then bottom to top.
-    append expr [makeMaskEvent "Ortho-Slice" 1 4 1]
+    append expr [makeMaskEvent [appendn "Ortho-Slice-" $N] 1 4 1]
     append expr [makeMaskEvent "Caption" 3 4 0]
     append expr [makeMaskEvent "Caption" 4 4 1]
-    append expr [makeSliceNumberEvent "Ortho-Slice" 1 4 6 $northo 0]
-    append expr [makeSliceNumberEvent "Ortho-Slice" 1 6 8 0 $northo]
+    append expr [makeSliceNumberEvent [appendn "Ortho-Slice-" $N] 1 4 6 $northo 0]
+    append expr [makeSliceNumberEvent [appendn "Ortho-Slice-" $N] 1 6 8 0 $northo]
 
     # Turn off the ortho slices/bounding box and turn on the skeleton with nodes. Rotate the
     # surface 360 degrees to visualize the skeleton.
-    append expr [makeMaskEvent "Bounding-Box" 1 8 0]
-    append expr [makeMaskEvent "Ortho-Slice" 1 8 0]
-    append expr [makeMaskEvent "Spatial-Graph-View" 1 8 1]
+    append expr [makeMaskEvent [appendn "Bounding-Box-" $N] 1 8 0]
+    append expr [makeMaskEvent [appendn "Ortho-Slice-" $N] 1 8 0]
+    append expr [makeMaskEvent [appendn "Spatial-Graph-View-" $N] 1 8 1]
     append expr [makeMaskEvent "Caption" 4 8 0]
     append expr [makeMaskEvent "Caption" 5 8 1]
     append expr [makeCameraOrbitEvent "Camera-Orbit" 1 8 12 0 360]
@@ -589,35 +625,35 @@ proc setupMovieLyso {bbwidth bbcolor lysocolor} {
 # Creates the objects and surface renderings necessary to produce a movie of a mitochondrion.
 #
 # Inputs:
-#     bbwidth      Bounding box thickness. DEFAULT = 2
-#     bbcolor      Bounding box color, in a comma-separated string "R,G,B", where each
-#                  value ranges from 0-1. (e.g. "1,0,0", "0.5,0.5,1") DEFAULT = 1,0.5,0
-#     mitocolor    Mito color, in a comma-separated string "R,G,B". DEFAULT = 0,1,0
-#     skelwidth    Skeleton branch thickness. DEFAULT = 3
-#     skelcolor    Skeleton color, in a comma-separated string. DEFAULT = 0.8,0.8,0.8
-#     nodecolor    Skeleton node color, in a comma-separated string. DEFAULT = 1,0,0
+#     N            Object number
+#     opts         Options array
 #//
 
-proc setupMovieMito {bbwidth bbcolor mitocolor nodecolor skelwidth skelcolor} {
-    global base makeMovieMitoLong AMIRA_ROOT
+proc setupMovieMito {N} {
+    global opts base AMIRA_ROOT
     set scriptAnim [load ${AMIRA_ROOT}/share/script-objects/DemoMakerClassic.scro]
     set scriptAnim [lindex $scriptAnim 0]
-    createBoundingBox "GeometrySurface.smooth" "Bounding-Box-1" $bbwidth $bbcolor
-    createSurfaceView "GeometrySurface" "Surface-View-1" 0 $mitocolor
-    createSurfaceView "GeometrySurface.smooth" "Surface-View-2" 0 $mitocolor
-    createSpatialGraphView "SmoothTree.spatialgraph" "Spatial-Graph-View-1" $nodecolor $skelcolor $skelwidth
-    createOrthoSlice "GeometrySurface.scanConverted" "Ortho-Slice-1"
-    set northo [ "Ortho-Slice-1" sliceNumber getMaxValue ]
+    createBoundingBox [appendn "GeometrySurface" $N ".smooth"] \
+        [appendn "Bounding-Box-" $N "-1"] $opts(bbwidth) $opts(bbcolor)
+    createSurfaceView [appendn "GeometrySurface" $N] \
+        [appendn "Surface-View-" $N "-1"] 0 $opts(mitocolor)
+    createSurfaceView [appendn "GeometrySurface" $N ".smooth"] \
+        [appendn "Surface-View-" $N "-2"] 0 $opts(mitocolor)
+    createSpatialGraphView [appendn "SmoothTree" $N ".spatialgraph"] \
+        [appendn "Spatial-Graph-View-" $N "-1"] $opts(nodecolor) $opts(skelcolor) $opts(skelwidth)
+    createOrthoSlice [appendn "GeometrySurface" $N ".scanConverted"] \
+        [appendn "Ortho-Slice-" $N "-1"]
+    set northo [ [appendn "Ortho-Slice-" $N "-1"] sliceNumber getMaxValue ]
     createCaption "Caption-1" 1 24 $base
     createCaption "Caption-2" 0 20 "Autosegmented Surface"
     createCaption "Caption-3" 0 20 "Remeshed Surface"
     createCaption "Caption-4" 0 20 "Surface Orthoslices"
     createCaption "Caption-5" 0 20 "3D Skeleton"
     createCameraPath "Camera-Orbit-1"
-    if {$makeMovieMitoLong == 1} {
-        set movieParams [makeEventListMitoLong $northo]
+    if {$opts(makeMovieMitoLong)} {
+        set movieParams [makeEventListMitoLong $N $northo]
     } else {
-        set movieParams [makeEventListMitoShort]
+        set movieParams [makeEventListMitoShort $N]
     }
     renderMovie $scriptAnim $movieParams
 }
@@ -670,6 +706,46 @@ proc renderMovie {scriptAnim movieParams} {
     "Movie-Maker-1" fire
 }
 
+
+proc workflow_mitochondrion {N} {
+    global opts
+    remeshGeometrySurface [appendn "GeometrySurface" $N] \
+        [appendn "Remesh-Surface-" $N] 1 100 0 1
+    smoothGeometrySurface [appendn "GeometrySurface" $N ".remeshed"] \
+        [appendn "Smooth-Surface-" $N] 10 0.9
+    surface2orthoSlice [appendn "GeometrySurface" $N ".smooth"] \
+        [appendn "Scan-Surface-To-Volume-" $N]
+    orthoSlice2skeleton [appendn "GeometrySurface" $N ".scanConverted"] \
+        [appendn "Centerline-Tree-" $N]
+    smoothSkeleton [appendn "GeometrySurface" $N ".Spatial-Graph"] \
+        [appendn "Smooth-Line-Set-" $N] 0.7 0.2 10
+    "SmoothTree.spatialgraph" setLabel [appendn "SmoothTree" $N ".spatialgraph"]
+    if {$opts(makeMovieMito)} {
+        setupMovieMito $N
+    }
+    #exportCSV "SmoothTree.spatialgraph" "Statistics-1" ${base}_skel.csv
+    #exportCSV "GeometrySurface.smooth" "Statistics-2" ${base}_sva.csv
+    
+
+}
+
+proc workflow_nucleus {} {
+
+
+}
+
+proc workflow_nucleolus {} {
+
+}
+
+proc workflow_plasmamembrane {} {
+
+}
+
+proc workflow_primarycilium {} {
+
+}
+
 #//
 #
 # MAIN
@@ -683,33 +759,42 @@ proc renderMovie {scriptAnim movieParams} {
 #
 #//
 
+# bbwidth      Bounding box thickness. DEFAULT = 2
+# bbcolor      Bounding box color, in a comma-separated string "R,G,B", where each
+#              value ranges from 0-1. (e.g. "1,0,0", "0.5,0.5,1") DEFAULT = 1,0.5,0
+# mitocolor    Mito color, in a comma-separated string "R,G,B". DEFAULT = 0,1,0
+# skelwidth    Skeleton branch thickness. DEFAULT = 3
+# skelcolor    Skeleton color, in a comma-separated string. DEFAULT = 0.8,0.8,0.8
+# nodecolor    Skeleton node color, in a comma-separated string. DEFAULT = 1,0,0
+
 #File parameters
 set file "mitochondrion_0047.wrl"
+set path_in "../amira_test/ZT04_01_neuron_01_scaled"
 
 # Dataset-specific parameters
-set scalex 300
-set scaley 300
-set scalez 300
+set opts(scalex) 300
+set opts(scaley) 300
+set opts(scalez) 300
 
 # Bounding box parameters
-set bbwidth 2
-set bbcolor "1,0.5,0"
+set opts(bbwidth) 2
+set opts(bbcolor) "1,0.5,0"
 
 # Mitochondria-specific parameters
-set makeMovieMito 1
-set makeMovieMitoLong 1
-set mitocolor "0,1,0"
-set skelwidth 3
-set skelcolor "0.8,0.8,0.8"
-set nodecolor "1,0,0"
+set opts(makeMovieMito) 1
+set opts(makeMovieMitoLong) 1
+set opts(mitocolor) "0,1,0"
+set opts(skelwidth) 3
+set opts(skelcolor) "0.8,0.8,0.8"
+set opts(nodecolor) "1,0,0"
 
 # Lysosome-specific parameters
-set makeMovieLyso 1
-set lysocolor "1,0,0"
+set opts(makeMovieLyso) 1
+set opts(lysocolor) "1,0,0"
 
 # Cilium-specific parameters 
-set makeMovieCilium 1
-set ciliumcolor "1,0.8,0.8"
+set opts(makeMovieCilium) 1
+set opts(ciliumcolor) "1,0.8,0.8"
 
 #//
 #
@@ -717,56 +802,74 @@ set ciliumcolor "1,0.8,0.8"
 #
 #//
 
-set base [file tail $file]
-set base [string trimright $base ".wrl"]
-[ load $file ] setLabel $base
+set str [appendn "GeometrySurface" "0050" ".remeshed"]
+echo $str
 
-# Extract the basename from the input VRML file. Load the object with this name
-set base [file tail $file]
-set base [string trimright $base ".wrl"]
-[ load $file ] setLabel $base
+set wrlfiles [ glob $path_in/*.wrl ]
+set nwrlfiles [ llength $wrlfiles ]
 
-#Convert VRML to Surface
-create HxGeometryToSurface "Open Inventor Scene To Surface"
-"Open Inventor Scene To Surface" data connect $base
-"Open Inventor Scene To Surface" action snap
-"Open Inventor Scene To Surface" fire
+for {set N 0} {$N < 1} {incr N} {
+    # Get basename and load file
+    set fname [ lindex $wrlfiles $N ]
+    set base [ file tail $fname ]
+    set base [ string trimright $base ".wrl" ]
+    [ load $fname ] setLabel $base
+
+    # Get the organelle type based on the filename 
+    set orglist [ split $base "_" ]
+    set organelle [ lindex $orglist 0 ] 
+    set number [ lindex $orglist 1 ] 
+   
+    # Convert VRML to Surface
+    set module [ concat "Open Inventor Scene To Surface" $number ]
+    echo $module
+    echo $base
+    create HxGeometryToSurface $module
+    $module data connect $base
+    $module action snap
+    $module fire
+    "GeometrySurface" setLabel [ appendn "GeometrySurface" $number ]
+
+    # Run the appropriate workflow
+    workflow_$organelle $number
+}
+
 
 # Get the organelle type based on the filename of the input VRML file
-set fnamelist [split $base "_"]
-set organelle [lindex $fnamelist 0]
+#set fnamelist [split $base "_"]
+#set organelle [lindex $fnamelist 0]
 
 # Determine workflow based on the organelle type
-if {$organelle == "mitochondrion"} {
-    remeshGeometrySurface "GeometrySurface" "Remesh-Surface-1" 1 100 0 1
-    smoothGeometrySurface "GeometrySurface.remeshed" "Smooth-Surface-1" 10 0.9
-    surface2orthoSlice "GeometrySurface.smooth" "Scan-Surface-To-Volume-1"
-    orthoSlice2skeleton "GeometrySurface.scanConverted" "Centerline-Tree-1"
-    smoothSkeleton "GeometrySurface.Spatial-Graph" "Smooth-Line-Set-1" 0.7 0.2 10
-    if {$makeMovieMito == 1} {
-        setupMovieMito $bbwidth $bbcolor $mitocolor $nodecolor $skelwidth $skelcolor
-    }
-    exportCSV "SmoothTree.spatialgraph" "Statistics-1" ${base}_skel.csv
-    exportCSV "GeometrySurface.smooth" "Statistics-2" ${base}_sva.csv
-} elseif {$organelle == "lysosome"} {
-    remeshGeometrySurface "GeometrySurface" "Remesh-Surface-1" 1 100 0 1
-    smoothGeometrySurface "GeometrySurface.remeshed" "Smooth-Surface-1" 10 0.9
-    if {$makeMovieLyso == 1} {
-        setupMovieLyso $bbwidth $bbcolor $lysocolor
-    }
-    exportCSV "GeometrySurface.smooth" "Statistics-1" ${base}_sva.csv
-} elseif {$organelle == "nucleus"} {
-    Test
-} elseif {$organelle == "nucleolus"} {
-    Test
-} elseif {$organelle == "primarycilium"} {
-    remeshGeometrySurface "GeometrySurface" "Remesh-Surface-1" 1 100 0 1
-    smoothGeometrySurface "GeometrySurface.remeshed" "Smooth-Surface-1" 10 0.7
-    surface2orthoSlice "GeometrySurface.smooth" "Scan-Surface-To-Volume-1"
-    orthoSlice2skeleton "GeometrySurface.scanConverted" "Centerline-Tree-1"
-    smoothSkeleton "GeometrySurface.Spatial-Graph" "Smooth-Line-Set-1" 0.7 0.2 10
-    if {$makeMovieCilium == 1} {
-        setupMovieCilium $bbwidth $bbcolor $ciliumcolor $nodecolor $skelwidth $skelcolor
-    }
-    exportCSV "SmoothTree.spatialgraph" "Statistics-1" ${base}_skel.csv
-}
+#if {$organelle == "mitochondrion"} {
+#    remeshGeometrySurface "GeometrySurface" "Remesh-Surface-1" 1 100 0 1
+#    smoothGeometrySurface "GeometrySurface.remeshed" "Smooth-Surface-1" 10 0.9
+#    surface2orthoSlice "GeometrySurface.smooth" "Scan-Surface-To-Volume-1"
+#    orthoSlice2skeleton "GeometrySurface.scanConverted" "Centerline-Tree-1"
+#    smoothSkeleton "GeometrySurface.Spatial-Graph" "Smooth-Line-Set-1" 0.7 0.2 10
+#    if {$makeMovieMito == 1} {
+#        setupMovieMito $bbwidth $bbcolor $mitocolor $nodecolor $skelwidth $skelcolor
+#    }
+#    exportCSV "SmoothTree.spatialgraph" "Statistics-1" ${base}_skel.csv
+#    exportCSV "GeometrySurface.smooth" "Statistics-2" ${base}_sva.csv
+#} elseif {$organelle == "lysosome"} {
+#    remeshGeometrySurface "GeometrySurface" "Remesh-Surface-1" 1 100 0 1
+#    smoothGeometrySurface "GeometrySurface.remeshed" "Smooth-Surface-1" 10 0.9
+#    if {$makeMovieLyso == 1} {
+#        setupMovieLyso $bbwidth $bbcolor $lysocolor
+#    }
+#    exportCSV "GeometrySurface.smooth" "Statistics-1" ${base}_sva.csv
+#} elseif {$organelle == "nucleus"} {
+#    Test
+#} elseif {$organelle == "nucleolus"} {
+#    Test
+#} elseif {$organelle == "primarycilium"} {
+#    remeshGeometrySurface "GeometrySurface" "Remesh-Surface-1" 1 100 0 1
+#    smoothGeometrySurface "GeometrySurface.remeshed" "Smooth-Surface-1" 10 0.7
+#    surface2orthoSlice "GeometrySurface.smooth" "Scan-Surface-To-Volume-1"
+#    orthoSlice2skeleton "GeometrySurface.scanConverted" "Centerline-Tree-1"
+#    smoothSkeleton "GeometrySurface.Spatial-Graph" "Smooth-Line-Set-1" 0.7 0.2 10
+#    if {$makeMovieCilium == 1} {
+#        setupMovieCilium $bbwidth $bbcolor $ciliumcolor $nodecolor $skelwidth $skelcolor
+#    }
+#    exportCSV "SmoothTree.spatialgraph" "Statistics-1" ${base}_skel.csv
+#}
