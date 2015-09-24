@@ -51,15 +51,19 @@ def getMrcStackInfo(file_mrc, string):
     # If the numbers are in scientific notation, IMOD's header will sometimes 
     # output them without spaces. In this case, find where the '+'s occur, and
     # split in this way.
-    if len(header) is 1:
-        headerstr = header[0]
-        positionOfPlusSigns = find(headerstr, '+')
-        initialPos = 0
-        for i in range(0, len(positionOfPlusSigns)):
-            finalPos = positionOfPlusSigns[i] + 3
-            header.append(headerstr[initialPos:finalPos])
-            initialPos = finalPos
-        header = header[1:4]
+    if len(header) is not 3:
+        for i in range(0, len(header)):
+            headerstr = header[i]
+            positionOfPlusSigns = find(headerstr, '+')
+            initialPos = 0
+            if len(positionOfPlusSigns) is 0:
+                header.append(headerstr)
+            else:
+                for j in range(0, len(positionOfPlusSigns)):
+                    finalPos = positionOfPlusSigns[j] + 3
+                    header.append(headerstr[initialPos:finalPos])
+                    initialPos = finalPos
+        header = header[len(header)-3:len(header)]
     return header
 
 # Finds all positions of a character in a given string
@@ -112,6 +116,8 @@ if __name__ == "__main__":
 
     # Get origin info from mrc stack
     origin = getMrcStackInfo(file_mrc, "origin")
+    if len(origin) is not 3:
+        print "Not 3"
 
     # Get the Z scale from the model file
     asciifile = os.path.join(path_tmp, "ascii.txt")
@@ -120,6 +126,10 @@ if __name__ == "__main__":
     line = matchLine("^scale", fid)
     modelzscale = float(line.split()[3])
     fid.close()
+
+    # Print header info
+    print "Scale (x,y,z): {0}, {1}, {2}".format(scale[0], scale[1], scale[2])
+    print "Origin (x,y,z): {0}, {1}, {2}".format(origin[0], origin[1], origin[2])
 
     # First, convert the IMOD model file to vrml using the IMOD program
     cmd = "imod2vrml2 {0} {1}".format(file_in, file_out)
