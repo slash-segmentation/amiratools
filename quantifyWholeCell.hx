@@ -323,7 +323,7 @@ proc smoothGeometrySurface {surfaceIn moduleName iterations lambda} {
 ##//
 
 proc surface2orthoSlice {surfaceIn moduleName} {
-    global scalex scaley scalez
+    global opts
     set surflist [split $surfaceIn "."]
     set surfaceOut [lindex $surflist 0] 
     append surfaceOut ".scanConverted"
@@ -337,9 +337,9 @@ proc surface2orthoSlice {surfaceIn moduleName} {
     set ymax [ $moduleName bbox getValue 3 ]
     set zmin [ $moduleName bbox getValue 4 ]
     set zmax [ $moduleName bbox getValue 5 ]
-    set dimx [ expr round((double($xmax) / $scalex - double($xmin) / $scalex)) ]
-    set dimy [ expr round((double($ymax) / $scaley - double($ymin) / $scaley)) ]
-    set dimz [ expr round((double($zmax) / $scalez - double($zmin) / $scalez)) ]
+    set dimx [ expr round((double($xmax) / $opts(scalex) - double($xmin) / $opts(scalex))) ]
+    set dimy [ expr round((double($ymax) / $opts(scaley) - double($ymin) / $opts(scaley))) ]
+    set dimz [ expr round((double($zmax) / $opts(scalez) - double($zmin) / $opts(scalez))) ]
     $moduleName dimensions setValues $dimx $dimy $dimz
     $moduleName action snap
     $moduleName fire
@@ -350,7 +350,7 @@ proc surface2orthoSlice {surfaceIn moduleName} {
     $surfaceOut primary setIndex 0 0
     $surfaceOut fire
     $surfaceOut select
-    $surfaceOut Voxelsize setValue "$scalex x $scaley x $scalez"
+    $surfaceOut Voxelsize setValue "$opts(scalex) x $opts(scaley) x $opts(scalez)"
 }
 
 #//
@@ -702,6 +702,7 @@ proc workflow_mitochondrion {N} {
         [appendn "Centerline-Tree-" $N]
     smoothSkeleton [appendn "GeometrySurface" $N ".Spatial-Graph"] \
         [appendn "Smooth-Line-Set-" $N] 0.7 0.2 10
+    "SmoothTree.spatialgraph" exportData "AmiraMesh ascii SpatialGraph" ${base}_nodes.am
     "SmoothTree.spatialgraph" setLabel [appendn "SmoothTree" $N ".spatialgraph"]
     if {$opts(makeMovieMito)} {
         setupMovieMito $N
@@ -765,18 +766,18 @@ set opts(bbcolor) "1,0.5,0"
 
 # Mitochondria-specific parameters
 set opts(makeMovieMito) 0
-set opts(makeMovieMitoLong) 1
+set opts(makeMovieMitoLong) 0
 set opts(mitocolor) "0,1,0"
 set opts(skelwidth) 3
 set opts(skelcolor) "0.8,0.8,0.8"
 set opts(nodecolor) "1,0,0"
 
 # Lysosome-specific parameters
-set opts(makeMovieLyso) 1
+set opts(makeMovieLyso) 0
 set opts(lysocolor) "1,0,0"
 
 # Cilium-specific parameters 
-set opts(makeMovieCilium) 1
+set opts(makeMovieCilium) 0
 set opts(ciliumcolor) "1,0.8,0.8"
 
 # Global parameters
@@ -791,7 +792,7 @@ set opts(renderOnly) 1
 set wrlfiles [ glob $path_in/*.wrl ]
 set nwrlfiles [ llength $wrlfiles ]
 
-for {set N 0} {$N < 1} {incr N} {
+for {set N 0} {$N < 4} {incr N} {
     # Get basename and load file
     set fname [ lindex $wrlfiles $N ]
     set base [ file tail $fname ]
@@ -815,6 +816,7 @@ for {set N 0} {$N < 1} {incr N} {
 
     # Run the appropriate workflow
     workflow_$organelle $number
+    #remove -all
 }
 
 
