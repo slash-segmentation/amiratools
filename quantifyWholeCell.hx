@@ -23,7 +23,11 @@ proc exportCSV {moduleIn moduleOut fileOut} {
     $moduleOut data connect $moduleIn
     $moduleOut doIt snap
     $moduleOut fire
-    $tableName exportData "CSV" $fileOut
+    
+    # Export the file if a valid output filename is provided 
+    if {[string equal $fileOut ""] == 0} {
+        $tableName exportData "CSV" $fileOut
+    }
 }
 
 #//
@@ -689,9 +693,33 @@ proc appendn {str_in args} {
     return $str_in
 }
 
+#//
+# Function: getLines
+# ------------------
+# Returns the lines of an input text file
+#
+# Input:
+#     file_in    Name of text file to read
+#
+# Returns:
+#     lines      List where each element corresponds to a line in the input file
+#//         
+
+proc getLines {file_in} {
+    catch {set fptr [open $file_in r]}
+    set contents [read -nonewline $fptr]
+    close $fptr
+    set lines [split $contents "\n"]    
+    return $lines
+}
 
 proc workflow_mitochondrion {N} {
     global base opts
+
+    set fnameNodes $opts(path_out)/${base}_nodes.am
+    set fnameSkel $opts(path_out)/${base}_skel.csv
+    set fnameSav $opts(path_out)/${base}_sav.csv
+
     remeshGeometrySurface [appendn "GeometrySurface" $N] \
         [appendn "Remesh-Surface-" $N] 1 100 0 1
     smoothGeometrySurface [appendn "GeometrySurface" $N ".remeshed"] \
@@ -702,15 +730,85 @@ proc workflow_mitochondrion {N} {
         [appendn "Centerline-Tree-" $N]
     smoothSkeleton [appendn "GeometrySurface" $N ".Spatial-Graph"] \
         [appendn "Smooth-Line-Set-" $N] 0.7 0.2 10
-    "SmoothTree.spatialgraph" exportData "AmiraMesh ascii SpatialGraph" ${base}_nodes.am
     "SmoothTree.spatialgraph" setLabel [appendn "SmoothTree" $N ".spatialgraph"]
+
+    # Create label analysis module    
+    create HxAnalyzeLabels
+    "Label Analysis" data connect [appendn "GeometrySurface" $N ".scanConverted"]  
+    "Label Analysis" measures setState "Mitochondria" Anisotropy BaryCenterX \
+        BaryCenterY BaryCenterZ Elongation Flatness EqDiameter Shape_VA3d \
+        IntegralMeanCurvature IntegralTotalCurvature OrientationTheta \
+        OrientationPhi FeretShape3d Breadth3d Length3d Width3d Euler3D
+    "Label Analysis" interpretation setValue 0
+    "Label Analysis" doIt hit
+    "Label Analysis" fire
+ 
+    # Get volume/surface area data
+    exportCSV [appendn "GeometrySurface" $N ".smooth"] \
+        [appendn "Statistics-" $N "-2"] ""
+    set statModule [appendn "GeometrySurface" $N ".statistics"]
+    set csvlist $N
+
+    # Surface area
+    lappend csvlist [$statModule getValue 2 0]
+
+    # Volume
+    lappend csvlist [$statModule getValue 3 0]
+ 
+    # Save branch length data
+    exportCSV [appendn "SmoothTree" $N ".spatialgraph"] \
+        [appendn "Statistics-" $N "-1"] ""
+    set treeModule [appendn "SmoothTree" $N ".spatialgraph"]
+    set statModule [appendn "SmoothTree" $N ".statistics"]
+
+    # Number of branches
+    set nBranch [$statModule getValue 1 1 0]
+    lappend csvlist $nBranch
+ 
+    # Total branch length
+    lappend csvlist [$statModule getValue 1 5 0]
+
+    # Average branch length 
+    lappend csvlist [$statModule getValue 1 2 0]
+
+    # Number of terminal nodes
+    lappend csvlist [$statModule getValue 3 2 0]
+
+    # Number of branch nodes
+    lappend csvlist [$statModule getValue 3 3 0] 
+
+    # Number of isolated nodes (bad)
+    lappend csvlist [$statModule getValue 3 4 0]
+
+    # Loop over each branch and append branch-specific values
+    for {set N 0} {$N < $nBranch} {incr N} {
+        # Values appended are: branch length, branch orientation (theta), branch
+        # orientation (phi), branch node x coord, branch node y coord, branch
+        # node z coord  
+        lappend csvlist [$statModule getValue 2 1 $N] 
+        lappend csvlist [$statModule getValue 2 4 $N]
+        lappend csvlist [$statModule getValue 2 5 $N]
+        lappend csvlist [$treeModule getValue 0 1 $N]
+        lappend csvlist [$treeModule getValue 0 2 $N]
+        lappend csvlist [$treeModule getValue 0 3 $N]
+    }
+    echo $csvlist
+
+
+    # Parse files
+    #set lines_sav [getLines $fnameSav]
+    #foreach ele $splitCont {
+    #    if {[regexp {^Exterior} $ele]} {
+    #        set strSav [split $ele ","]
+    #        set surfArea [lindex $strSav 2]
+    #        set volume [lindex $strSav 1]
+    #    } 
+    #}   
+ 
+    # Make movie if necessary 
     if {$opts(makeMovieMito)} {
         setupMovieMito $N
     }
-    exportCSV [appendn "SmoothTree" $N ".spatialgraph"] \
-        [appendn "Statistics-" $N "-1"] ${base}_skel.csv
-    exportCSV [appendn "GeometrySurface" $N ".smooth"] \
-        [appendn "Statistics-" $N "-2"] ${base}_sva.csv
 }
 
 proc workflow_nucleus {} {
@@ -752,8 +850,8 @@ proc workflow_primarycilium {} {
 # nodecolor    Skeleton node color, in a comma-separated string. DEFAULT = 1,0,0
 
 #File parameters
-set file "mitochondrion_0047.wrl"
-set path_in "../amira_test/ZT04_01_neuron_01_scaled"
+set opts(path_in) "../amira_test/ZT04_01_neuron_01_scaled"
+set opts(path_out) "."
 
 # Dataset-specific parameters
 set opts(scalex) 300
@@ -789,10 +887,12 @@ set opts(renderOnly) 1
 #
 #//
 
-set wrlfiles [ glob $path_in/*.wrl ]
+set wrlfiles [ glob $opts(path_in)/*.wrl ]
 set nwrlfiles [ llength $wrlfiles ]
 
-for {set N 0} {$N < 4} {incr N} {
+for {set N 0} {$N < 5} {incr N} {
+    remove -all
+
     # Get basename and load file
     set fname [ lindex $wrlfiles $N ]
     set base [ file tail $fname ]
@@ -816,7 +916,6 @@ for {set N 0} {$N < 4} {incr N} {
 
     # Run the appropriate workflow
     workflow_$organelle $number
-    #remove -all
 }
 
 
@@ -835,14 +934,14 @@ for {set N 0} {$N < 4} {incr N} {
 #        setupMovieMito $bbwidth $bbcolor $mitocolor $nodecolor $skelwidth $skelcolor
 #    }
 #    exportCSV "SmoothTree.spatialgraph" "Statistics-1" ${base}_skel.csv
-#    exportCSV "GeometrySurface.smooth" "Statistics-2" ${base}_sva.csv
+#    exportCSV "GeometrySurface.smooth" "Statistics-2" ${base}_sav.csv
 #} elseif {$organelle == "lysosome"} {
 #    remeshGeometrySurface "GeometrySurface" "Remesh-Surface-1" 1 100 0 1
 #    smoothGeometrySurface "GeometrySurface.remeshed" "Smooth-Surface-1" 10 0.9
 #    if {$makeMovieLyso == 1} {
 #        setupMovieLyso $bbwidth $bbcolor $lysocolor
 #    }
-#    exportCSV "GeometrySurface.smooth" "Statistics-1" ${base}_sva.csv
+#    exportCSV "GeometrySurface.smooth" "Statistics-1" ${base}_sav.csv
 #} elseif {$organelle == "nucleus"} {
 #    Test
 #} elseif {$organelle == "nucleolus"} {
