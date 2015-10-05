@@ -926,7 +926,7 @@ set opts(renderOnly) 1
 #
 #//
 
-set wrlfiles [ glob $opts(path_in)/*.wrl ]
+set wrlfiles [lsort [glob $opts(path_in)/*.wrl ]]
 set nwrlfiles [ llength $wrlfiles ]
 
 for {set N 0} {$N < 5} {incr N} {
