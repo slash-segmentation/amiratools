@@ -714,23 +714,23 @@ proc getLines {file_in} {
 }
 
 proc workflow_mitochondrion {N} {
-    global base opts
+    global base opts fnamecsv
 
-    set fnameNodes $opts(path_out)/${base}_nodes.am
-    set fnameSkel $opts(path_out)/${base}_skel.csv
-    set fnameSav $opts(path_out)/${base}_sav.csv
+    set mitosmooth [appendn "GeometrySurface" $N ".smooth"]
+    set skelsmooth [appendn "SmoothTree" $N ".spatialgraph"] 
+    set fnamemito [appendn $opts(path_out) "/mitochondrion_mesh_" $N ".am"]
+    set fnameskel [appendn $opts(path_out) "/mitochondrion_skel_" $N ".am"]
 
     remeshGeometrySurface [appendn "GeometrySurface" $N] \
         [appendn "Remesh-Surface-" $N] 1 100 0 1
     smoothGeometrySurface [appendn "GeometrySurface" $N ".remeshed"] \
         [appendn "Smooth-Surface-" $N] 10 0.9
-    surface2orthoSlice [appendn "GeometrySurface" $N ".smooth"] \
-        [appendn "Scan-Surface-To-Volume-" $N]
+    surface2orthoSlice $mitosmooth [appendn "Scan-Surface-To-Volume-" $N]
     orthoSlice2skeleton [appendn "GeometrySurface" $N ".scanConverted"] \
         [appendn "Centerline-Tree-" $N]
     smoothSkeleton [appendn "GeometrySurface" $N ".Spatial-Graph"] \
         [appendn "Smooth-Line-Set-" $N] 0.7 0.2 10
-    "SmoothTree.spatialgraph" setLabel [appendn "SmoothTree" $N ".spatialgraph"]
+    "SmoothTree.spatialgraph" setLabel $skelsmooth
 
     # Create label analysis module    
     create HxAnalyzeLabels
@@ -742,73 +742,112 @@ proc workflow_mitochondrion {N} {
     "Label Analysis" interpretation setValue 0
     "Label Analysis" doIt hit
     "Label Analysis" fire
- 
-    # Get volume/surface area data
+
     exportCSV [appendn "GeometrySurface" $N ".smooth"] \
         [appendn "Statistics-" $N "-2"] ""
-    set statModule [appendn "GeometrySurface" $N ".statistics"]
-    set csvlist $N
-
-    # Surface area
-    lappend csvlist [$statModule getValue 2 0]
-
-    # Volume
-    lappend csvlist [$statModule getValue 3 0]
- 
-    # Save branch length data
     exportCSV [appendn "SmoothTree" $N ".spatialgraph"] \
         [appendn "Statistics-" $N "-1"] ""
-    set treeModule [appendn "SmoothTree" $N ".spatialgraph"]
-    set statModule [appendn "SmoothTree" $N ".statistics"]
 
+    set treeModule [appendn "SmoothTree" $N ".spatialgraph"]
+    set treeStatModule [appendn "SmoothTree" $N ".statistics"] 
+    set statModule [appendn "GeometrySurface" $N ".statistics"]
+    set labelModule [appendn "GeometrySurface" $N ".Label-Analysis"]
+ 
+    # Initialize CSV string with object number
+    set csvlist [string trimleft $N "0"]
+
+    # Get whole object centroid
+    set barycentx [$labelModule getValue 1 0]
+    set barycenty [$labelModule getValue 2 0]
+    set barycentz [$labelModule getValue 3 0]
+    lappend csvlist [expr double($barycentx) / 10000]
+    lappend csvlist [expr double($barycenty) / 10000]
+    lappend csvlist [expr double($barycentz) / 10000] 
+
+    # Get whole object orientation (theta, phi)
+    lappend csvlist [$labelModule getValue 10 0]
+    lappend csvlist [$labelModule getValue 11 0]
+
+    # Surface area
+    set sa [$statModule getValue 2 0]
+    lappend csvlist [expr double($sa) / (10000 ** 2)] 
+
+    # Volume
+    set volume [$statModule getValue 3 0]
+    lappend csvlist [expr double($volume) / (10000 **3)]   
+ 
+    # Get whole object morphological metrics
+    # (anisotropy, elongation, flatness, EquivDiam, Shape_VA3d, IntMeanCurv,
+    # IntTotalCurv, FeretShape3d, Breadth3D, Length3D, Width3D, Euler Number)
+    lappend csvlist [$labelModule getValue 0 0]
+    lappend csvlist [$labelModule getValue 4 0]
+    lappend csvlist [$labelModule getValue 5 0]
+    set equivdiam [$labelModule getValue 6 0]
+    lappend csvlist [expr double($equivdiam) / 10000]
+    lappend csvlist [$labelModule getValue 7 0]
+    lappend csvlist [$labelModule getValue 8 0]
+    lappend csvlist [$labelModule getValue 9 0]
+    lappend csvlist [$labelModule getValue 12 0]
+    set breadth3d [$labelModule getValue 13 0]
+    set length3d [$labelModule getValue 14 0]
+    set width3d [$labelModule getValue 15 0]
+    lappend csvlist [expr double($breadth3d) / 10000]
+    lappend csvlist [expr double($length3d) / 10000]
+    lappend csvlist [expr double($width3d) / 10000]
+    lappend csvlist [$labelModule getValue 16 0]    
+ 
     # Number of branches
-    set nBranch [$statModule getValue 1 1 0]
+    set nBranch [$treeStatModule getValue 1 1 0]
     lappend csvlist $nBranch
  
     # Total branch length
-    lappend csvlist [$statModule getValue 1 5 0]
+    set blength [$treeStatModule getValue 1 5 0]
+    lappend csvlist [expr double($blength) / 10000]    
 
     # Average branch length 
-    lappend csvlist [$statModule getValue 1 2 0]
+    set avgblength [$treeStatModule getValue 1 2 0]
+    lappend csvlist [expr double($avgblength) / 10000] 
 
     # Number of terminal nodes
-    lappend csvlist [$statModule getValue 3 2 0]
+    lappend csvlist [$treeStatModule getValue 3 2 0]
 
     # Number of branch nodes
-    lappend csvlist [$statModule getValue 3 3 0] 
+    lappend csvlist [$treeStatModule getValue 3 3 0] 
 
     # Number of isolated nodes (bad)
-    lappend csvlist [$statModule getValue 3 4 0]
+    lappend csvlist [$treeStatModule getValue 3 4 0]
 
     # Loop over each branch and append branch-specific values
     for {set N 0} {$N < $nBranch} {incr N} {
         # Values appended are: branch length, branch orientation (theta), branch
         # orientation (phi), branch node x coord, branch node y coord, branch
         # node z coord  
-        lappend csvlist [$statModule getValue 2 1 $N] 
-        lappend csvlist [$statModule getValue 2 4 $N]
-        lappend csvlist [$statModule getValue 2 5 $N]
-        lappend csvlist [$treeModule getValue 0 1 $N]
-        lappend csvlist [$treeModule getValue 0 2 $N]
-        lappend csvlist [$treeModule getValue 0 3 $N]
+        set blengthN [$treeStatModule getValue 2 1 $N]
+        lappend csvlist [expr double($blengthN) / 10000]   
+        lappend csvlist [$treeStatModule getValue 2 4 $N]
+        lappend csvlist [$treeStatModule getValue 2 5 $N]
+        set bcentxN [$treeModule getValue 0 1 $N]
+        set bcentyN [$treeModule getValue 0 2 $N]
+        set bcentzN [$treeModule getValue 0 3 $N]
+        lappend csvlist [expr double($bcentxN) / 10000]
+        lappend csvlist [expr double($bcentyN) / 10000]
+        lappend csvlist [expr double($bcentzN) / 10000] 
     }
     echo $csvlist
 
+    # Write to CSV file
+    set fid [open $fnamecsv(mitochondrion) "a"]
+    puts $fid [regsub -all {\s+} $csvlist ,]
+    close $fid
 
-    # Parse files
-    #set lines_sav [getLines $fnameSav]
-    #foreach ele $splitCont {
-    #    if {[regexp {^Exterior} $ele]} {
-    #        set strSav [split $ele ","]
-    #        set surfArea [lindex $strSav 2]
-    #        set volume [lindex $strSav 1]
-    #    } 
-    #}   
- 
     # Make movie if necessary 
     if {$opts(makeMovieMito)} {
         setupMovieMito $N
     }
+
+    # Export files to AmiraMesh
+    $mitosmooth exportData "Amira Binary Surface" $fnamemito
+    $skelsmooth exportData "AmiraMesh SpatialGraph" $fnameskel
 }
 
 proc workflow_nucleus {} {
@@ -915,7 +954,12 @@ for {set N 0} {$N < 5} {incr N} {
     "GeometrySurface" setLabel [ appendn "GeometrySurface" $number ]
 
     # Run the appropriate workflow
-    workflow_$organelle $number
+    if {[string equal $organelle "mitochondrion"] == 1} {
+        if {[info exists fid($organelle)] == 0} { 
+            set fnamecsv($organelle) [appendn $opts(path_out) "/" $organelle ".csv"]
+        } 
+        workflow_$organelle $number
+    }
 }
 
 
