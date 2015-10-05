@@ -770,11 +770,18 @@ proc workflow_mitochondrion {N} {
 
     # Surface area
     set sa [$statModule getValue 2 0]
-    lappend csvlist [expr double($sa) / (10000 ** 2)] 
+    set sa [expr double($sa) / (10000 ** 2)]
+    lappend csvlist $sa 
 
     # Volume
     set volume [$statModule getValue 3 0]
-    lappend csvlist [expr double($volume) / (10000 **3)]   
+    set volume [expr double($volume) / (10000 ** 3)]
+    lappend csvlist $volume  
+
+    # Sphericity 
+    set pi 3.1415926535897931    
+    set sphericity [expr ((double($pi) ** 1/3) * ((6 * $volume) ** 2/3)) / $sa] 
+    lappend csvlist $sphericity
  
     # Get whole object morphological metrics
     # (anisotropy, elongation, flatness, EquivDiam, Shape_VA3d, IntMeanCurv,
