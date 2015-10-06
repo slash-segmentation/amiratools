@@ -493,12 +493,12 @@ proc createOrthoSlice {volumeIn moduleName} {
 #//
 
 proc createSpatialGraphView {graphIn moduleName nodecolor linecolor linewidth} {
-    global scalex
+    global opts 
     echo $nodecolor
     create HxSpatialGraphView $moduleName
     $moduleName data connect $graphIn
-    $moduleName nodeScaleFactor setMinMax 0 $scalex
-    $moduleName nodeScaleFactor setValue $scalex
+    $moduleName nodeScaleFactor setMinMax 0 $opts(scalex)
+    $moduleName nodeScaleFactor setValue $opts(scalex)
     set nodecolor [split $nodecolor ","]
     $moduleName nodeColor setColor 0 [lindex $nodecolor 0] [lindex $nodecolor 1] [lindex $nodecolor 2]
     set linecolor [split $linecolor ","]
@@ -718,8 +718,8 @@ proc workflow_mitochondrion {N} {
 
     set mitosmooth [appendn "GeometrySurface" $N ".smooth"]
     set skelsmooth [appendn "SmoothTree" $N ".spatialgraph"] 
-    set fnamemito [appendn $opts(path_out) "/mitochondrion_mesh_" $N ".am"]
-    set fnameskel [appendn $opts(path_out) "/mitochondrion_skel_" $N ".am"]
+    set fnamemito [appendn $opts(path_out) "/qwc_mitochondrion_mesh_" $N ".am"]
+    set fnameskel [appendn $opts(path_out) "/qwc_mitochondrion_skel_" $N ".am"]
 
     remeshGeometrySurface [appendn "GeometrySurface" $N] \
         [appendn "Remesh-Surface-" $N] 1 100 0 1
@@ -867,11 +867,71 @@ proc workflow_nucleolus {} {
 }
 
 proc workflow_plasmamembrane {} {
+    global base opts fnamecsv
 
+    set membsmooth [appendn "GeometrySurface" $N ".smooth"]
+    set fnamememb [appendn $opts(path_out) "/qwc_plasmamembrane_mesh_" $N ".am"]
+
+    remeshGeometrySurface [appendn "GeometrySurface" $N] \
+        [appendn "Remesh-Surface-" $N] 1 100 0 1
+    smoothGeometrySurface [appendn "GeometrySurface" $N ".remeshed"] \
+        [appendn "Smooth-Surface-" $N] 10 0.7
+
+    exportCSV [appendn "GeometrySurface" $N ".smooth"] \
+        [appendn "Statistics-" $N "-2"] ""
+    set statModule [appendn "GeometrySurface" $N ".statistics"]
+
+    # Initialize CSV string with object number
+    set csvlist [string trimleft $N "0"]
+
+    # Surface area
+    set sa [$statModule getValue 2 0]
+    set sa [expr double($sa) / (10000 ** 2)]
+    lappend csvlist $sa
+
+    # Volume
+    set volume [$statModule getValue 3 0]
+    set volume [expr double($volume) / (10000 ** 3)]
+    lappend csvlist $volume
+
+    # Write to CSV file
+    set fid [open $fnamecsv(plasmamembrane) "a"]
+    puts $fid [regsub -all {\s+} $csvlist ,]
+    close $fid
 }
 
 proc workflow_primarycilium {} {
 
+}
+
+proc renderWholeCell {N} {
+    global opts
+    for {set i 0} {$i < $N} {incr i} {
+        set ni [format "%04d" $i]
+        set files [lsort [glob -nocomplain $opts(path_out)/qwc*$ni*.am]]
+        set nfiles [llength $files]
+        for {set j 0} {$j < $nfiles} {incr j} {
+            set filej [lindex $files $j] 
+            set basej [file tail $filej]
+            set organellej [lindex [split $basej "_"] 1]
+            set typej [lindex [split $basej "_"] 2]
+            [load $filej] setLabel $basej
+            if {[string equal organellej "mitochondrion"] == 1} {
+                if {[string equal $typej "mesh"] == 1} {
+                    set moduleName [appendn "SurfaceView-" $ni]
+                    createSurfaceView $basej $moduleName 0.7 $opts(mitocolor)
+                } elseif {[string equal $typej "skel"] == 1} {
+                    set moduleName [appendn "Spatial-Graph-View-" $ni]
+                    createSpatialGraphView $basej $moduleName $opts(nodecolor) $opts(skelcolor) 3 
+                }
+            } elseif {[string equal organellej "plasmamembrane"] == 1} {
+                if {[string equal $typej "mesh"] == 1} {
+                    set moduleName [appendn "SurfaceView-" $ni]
+                    createSurfaceView $basej $moduleName 0.9 $opts(plasmamembranecolor)
+                }
+            }
+        }
+    }
 }
 
 #//
@@ -896,7 +956,7 @@ proc workflow_primarycilium {} {
 # nodecolor    Skeleton node color, in a comma-separated string. DEFAULT = 1,0,0
 
 #File parameters
-set opts(path_in) "../amira_test/ZT04_01_neuron_01_scaled"
+set opts(path_in) "../amira_test/ZT04_01_isotropic_neuron_01_join"
 set opts(path_out) "."
 
 # Dataset-specific parameters
@@ -913,7 +973,7 @@ set opts(makeMovieMito) 0
 set opts(makeMovieMitoLong) 0
 set opts(mitocolor) "0,1,0"
 set opts(skelwidth) 3
-set opts(skelcolor) "0.8,0.8,0.8"
+set opts(skelcolor) "0,0,0"
 set opts(nodecolor) "1,0,0"
 
 # Lysosome-specific parameters
@@ -924,8 +984,13 @@ set opts(lysocolor) "1,0,0"
 set opts(makeMovieCilium) 0
 set opts(ciliumcolor) "1,0.8,0.8"
 
+# Plasma membrane-specific parameters
+set opts(makeMoviePlasmaMembrane) 0
+set opts(plasmamembranecolor) "1,1,1" 
+
 # Global parameters
 set opts(renderOnly) 1
+set opts(renderWholeCell) 1
  
 #//
 #
@@ -936,7 +1001,7 @@ set opts(renderOnly) 1
 set wrlfiles [lsort [glob $opts(path_in)/*.wrl ]]
 set nwrlfiles [ llength $wrlfiles ]
 
-for {set N 0} {$N < 5} {incr N} {
+for {set N 0} {$N < $nwrlfiles} {incr N} {
     remove -all
 
     # Get basename and load file
@@ -969,42 +1034,7 @@ for {set N 0} {$N < 5} {incr N} {
     }
 }
 
-
-# Get the organelle type based on the filename of the input VRML file
-#set fnamelist [split $base "_"]
-#set organelle [lindex $fnamelist 0]
-
-# Determine workflow based on the organelle type
-#if {$organelle == "mitochondrion"} {
-#    remeshGeometrySurface "GeometrySurface" "Remesh-Surface-1" 1 100 0 1
-#    smoothGeometrySurface "GeometrySurface.remeshed" "Smooth-Surface-1" 10 0.9
-#    surface2orthoSlice "GeometrySurface.smooth" "Scan-Surface-To-Volume-1"
-#    orthoSlice2skeleton "GeometrySurface.scanConverted" "Centerline-Tree-1"
-#    smoothSkeleton "GeometrySurface.Spatial-Graph" "Smooth-Line-Set-1" 0.7 0.2 10
-#    if {$makeMovieMito == 1} {
-#        setupMovieMito $bbwidth $bbcolor $mitocolor $nodecolor $skelwidth $skelcolor
-#    }
-#    exportCSV "SmoothTree.spatialgraph" "Statistics-1" ${base}_skel.csv
-#    exportCSV "GeometrySurface.smooth" "Statistics-2" ${base}_sav.csv
-#} elseif {$organelle == "lysosome"} {
-#    remeshGeometrySurface "GeometrySurface" "Remesh-Surface-1" 1 100 0 1
-#    smoothGeometrySurface "GeometrySurface.remeshed" "Smooth-Surface-1" 10 0.9
-#    if {$makeMovieLyso == 1} {
-#        setupMovieLyso $bbwidth $bbcolor $lysocolor
-#    }
-#    exportCSV "GeometrySurface.smooth" "Statistics-1" ${base}_sav.csv
-#} elseif {$organelle == "nucleus"} {
-#    Test
-#} elseif {$organelle == "nucleolus"} {
-#    Test
-#} elseif {$organelle == "primarycilium"} {
-#    remeshGeometrySurface "GeometrySurface" "Remesh-Surface-1" 1 100 0 1
-#    smoothGeometrySurface "GeometrySurface.remeshed" "Smooth-Surface-1" 10 0.7
-#    surface2orthoSlice "GeometrySurface.smooth" "Scan-Surface-To-Volume-1"
-#    orthoSlice2skeleton "GeometrySurface.scanConverted" "Centerline-Tree-1"
-#    smoothSkeleton "GeometrySurface.Spatial-Graph" "Smooth-Line-Set-1" 0.7 0.2 10
-#    if {$makeMovieCilium == 1} {
-#        setupMovieCilium $bbwidth $bbcolor $ciliumcolor $nodecolor $skelwidth $skelcolor
-#    }
-#    exportCSV "SmoothTree.spatialgraph" "Statistics-1" ${base}_skel.csv
-#}
+# Load all outputs (if desired)
+if {$opts(renderWholeCell)} {
+    renderWholeCell $nwrlfiles
+}
