@@ -713,6 +713,101 @@ proc getLines {file_in} {
     return $lines
 }
 
+proc csvOrganelleMetrics {N labelModule statModule} {
+    # Initialize CSV string with object number
+    set csvlist [string trimleft $N "0"]
+
+    # Get whole object centroid
+    set barycentx [$labelModule getValue 1 0]
+    set barycenty [$labelModule getValue 2 0]
+    set barycentz [$labelModule getValue 3 0]
+    lappend csvlist [expr double($barycentx) / 10000]
+    lappend csvlist [expr double($barycenty) / 10000]
+    lappend csvlist [expr double($barycentz) / 10000]
+
+    # Get whole object orientation (theta, phi)
+    lappend csvlist [$labelModule getValue 10 0]
+    lappend csvlist [$labelModule getValue 11 0]
+    
+    # Surface area
+    set sa [$statModule getValue 2 0]
+    set sa [expr double($sa) / (10000 ** 2)]
+    lappend csvlist $sa
+    
+    # Volume
+    set volume [$statModule getValue 3 0]
+    set volume [expr double($volume) / (10000 ** 3)]
+    lappend csvlist $volume
+    
+    # Sphericity 
+    set pi 3.1415926535897931
+    set sphericity [expr ((double($pi) ** 1/3) * ((6 * $volume) ** 2/3)) / $sa]
+    lappend csvlist $sphericity
+    
+    # Get whole object morphological metrics
+    # (anisotropy, elongation, flatness, EquivDiam, Shape_VA3d, IntMeanCurv,
+    # IntTotalCurv, FeretShape3d, Breadth3D, Length3D, Width3D, Euler Number)
+    lappend csvlist [$labelModule getValue 0 0]
+    lappend csvlist [$labelModule getValue 4 0]
+    lappend csvlist [$labelModule getValue 5 0]
+    set equivdiam [$labelModule getValue 6 0]
+    lappend csvlist [expr double($equivdiam) / 10000]
+    lappend csvlist [$labelModule getValue 7 0]
+    lappend csvlist [$labelModule getValue 8 0]
+    lappend csvlist [$labelModule getValue 9 0]
+    lappend csvlist [$labelModule getValue 12 0]
+    set breadth3d [$labelModule getValue 13 0]
+    set length3d [$labelModule getValue 14 0]
+    set width3d [$labelModule getValue 15 0]
+    lappend csvlist [expr double($breadth3d) / 10000]
+    lappend csvlist [expr double($length3d) / 10000]
+    lappend csvlist [expr double($width3d) / 10000]
+    lappend csvlist [$labelModule getValue 16 0]
+    
+    return $csvlist
+}
+
+proc workflow_lysosome {N} {
+    global base opts fnamecsv
+
+    set lysosmooth [appendn "GeometrySurface" $N ".remeshed"]
+    set fnamelyso [appendn $opts(path_out) "/qwc_lysosome_mesh_" $N ".am"]
+
+    remeshGeometrySurface [appendn "GeometrySurface" $N] \
+        [appendn "Remesh-Surface-" $N] 1 100 0 1
+    surface2orthoSlice $lysosmooth [appendn "Scan-Surface-To-Volume-" $N]
+
+    # Create label analysis module    
+    create HxAnalyzeLabels
+    "Label Analysis" data connect [appendn "GeometrySurface" $N ".scanConverted"]
+    "Label Analysis" measures setState "Lysosome" Anisotropy BaryCenterX \
+        BaryCenterY BaryCenterZ Elongation Flatness EqDiameter Shape_VA3d \
+        IntegralMeanCurvature IntegralTotalCurvature OrientationTheta \
+        OrientationPhi FeretShape3d Breadth3d Length3d Width3d Euler3D
+    "Label Analysis" interpretation setValue 0
+    "Label Analysis" doIt hit
+    "Label Analysis" fire
+
+    exportCSV $lysosmooth [appendn "Statistics-" $N "-2"] ""
+
+    set statModule [appendn "GeometrySurface" $N ".statistics"]
+    set labelModule [appendn "GeometrySurface" $N ".Label-Analysis"]
+    set csvlist [csvOrganelleMetrics $N $labelModule $statModule] 
+    
+    # Write to CSV file
+    set fid [open $fnamecsv(lysosome) "a"]
+    puts $fid [regsub -all {\s+} $csvlist ,]
+    close $fid
+    
+    # Make movie if necessary 
+    if {$opts(makeMovieMito)} {
+        setupMovieMito $N
+    }
+    
+    # Export files to AmiraMesh
+    $lysosmooth exportData "Amira Binary Surface" $fnamelyso
+}
+
 proc workflow_mitochondrion {N} {
     global base opts fnamecsv
 
@@ -724,7 +819,7 @@ proc workflow_mitochondrion {N} {
     remeshGeometrySurface [appendn "GeometrySurface" $N] \
         [appendn "Remesh-Surface-" $N] 1 100 0 1
     smoothGeometrySurface [appendn "GeometrySurface" $N ".remeshed"] \
-        [appendn "Smooth-Surface-" $N] 10 0.9
+        [appendn "Smooth-Surface-" $N] 10 0.7
     surface2orthoSlice $mitosmooth [appendn "Scan-Surface-To-Volume-" $N]
     orthoSlice2skeleton [appendn "GeometrySurface" $N ".scanConverted"] \
         [appendn "Centerline-Tree-" $N]
@@ -752,56 +847,8 @@ proc workflow_mitochondrion {N} {
     set treeStatModule [appendn "SmoothTree" $N ".statistics"] 
     set statModule [appendn "GeometrySurface" $N ".statistics"]
     set labelModule [appendn "GeometrySurface" $N ".Label-Analysis"]
- 
-    # Initialize CSV string with object number
-    set csvlist [string trimleft $N "0"]
 
-    # Get whole object centroid
-    set barycentx [$labelModule getValue 1 0]
-    set barycenty [$labelModule getValue 2 0]
-    set barycentz [$labelModule getValue 3 0]
-    lappend csvlist [expr double($barycentx) / 10000]
-    lappend csvlist [expr double($barycenty) / 10000]
-    lappend csvlist [expr double($barycentz) / 10000] 
-
-    # Get whole object orientation (theta, phi)
-    lappend csvlist [$labelModule getValue 10 0]
-    lappend csvlist [$labelModule getValue 11 0]
-
-    # Surface area
-    set sa [$statModule getValue 2 0]
-    set sa [expr double($sa) / (10000 ** 2)]
-    lappend csvlist $sa 
-
-    # Volume
-    set volume [$statModule getValue 3 0]
-    set volume [expr double($volume) / (10000 ** 3)]
-    lappend csvlist $volume  
-
-    # Sphericity 
-    set pi 3.1415926535897931    
-    set sphericity [expr ((double($pi) ** 1/3) * ((6 * $volume) ** 2/3)) / $sa] 
-    lappend csvlist $sphericity
- 
-    # Get whole object morphological metrics
-    # (anisotropy, elongation, flatness, EquivDiam, Shape_VA3d, IntMeanCurv,
-    # IntTotalCurv, FeretShape3d, Breadth3D, Length3D, Width3D, Euler Number)
-    lappend csvlist [$labelModule getValue 0 0]
-    lappend csvlist [$labelModule getValue 4 0]
-    lappend csvlist [$labelModule getValue 5 0]
-    set equivdiam [$labelModule getValue 6 0]
-    lappend csvlist [expr double($equivdiam) / 10000]
-    lappend csvlist [$labelModule getValue 7 0]
-    lappend csvlist [$labelModule getValue 8 0]
-    lappend csvlist [$labelModule getValue 9 0]
-    lappend csvlist [$labelModule getValue 12 0]
-    set breadth3d [$labelModule getValue 13 0]
-    set length3d [$labelModule getValue 14 0]
-    set width3d [$labelModule getValue 15 0]
-    lappend csvlist [expr double($breadth3d) / 10000]
-    lappend csvlist [expr double($length3d) / 10000]
-    lappend csvlist [expr double($width3d) / 10000]
-    lappend csvlist [$labelModule getValue 16 0]    
+    set csvlist [csvOrganelleMetrics $N $labelModule $statModule] 
  
     # Number of branches
     set nBranch [$treeStatModule getValue 1 1 0]
@@ -840,7 +887,6 @@ proc workflow_mitochondrion {N} {
         lappend csvlist [expr double($bcentyN) / 10000]
         lappend csvlist [expr double($bcentzN) / 10000] 
     }
-    echo $csvlist
 
     # Write to CSV file
     set fid [open $fnamecsv(mitochondrion) "a"]
@@ -857,16 +903,16 @@ proc workflow_mitochondrion {N} {
     $skelsmooth exportData "AmiraMesh SpatialGraph" $fnameskel
 }
 
-proc workflow_nucleus {} {
+proc workflow_nucleus {N} {
 
 
 }
 
-proc workflow_nucleolus {} {
+proc workflow_nucleolus {N} {
 
 }
 
-proc workflow_plasmamembrane {} {
+proc workflow_plasmamembrane {N} {
     global base opts fnamecsv
 
     set membsmooth [appendn "GeometrySurface" $N ".smooth"]
@@ -898,9 +944,12 @@ proc workflow_plasmamembrane {} {
     set fid [open $fnamecsv(plasmamembrane) "a"]
     puts $fid [regsub -all {\s+} $csvlist ,]
     close $fid
+
+    # Export files to AmiraMesh
+    $membsmooth exportData "Amira Binary Surface" $fnamememb   
 }
 
-proc workflow_primarycilium {} {
+proc workflow_primarycilium {N} {
 
 }
 
@@ -916,18 +965,24 @@ proc renderWholeCell {N} {
             set organellej [lindex [split $basej "_"] 1]
             set typej [lindex [split $basej "_"] 2]
             [load $filej] setLabel $basej
-            if {[string equal organellej "mitochondrion"] == 1} {
-                if {[string equal $typej "mesh"] == 1} {
+            if {[string equal $organellej "mitochondrion"]} {
+                echo $organellej
+                if {[string equal $typej "mesh"]} {
                     set moduleName [appendn "SurfaceView-" $ni]
                     createSurfaceView $basej $moduleName 0.7 $opts(mitocolor)
-                } elseif {[string equal $typej "skel"] == 1} {
+                } elseif {[string equal $typej "skel"]} {
                     set moduleName [appendn "Spatial-Graph-View-" $ni]
                     createSpatialGraphView $basej $moduleName $opts(nodecolor) $opts(skelcolor) 3 
                 }
-            } elseif {[string equal organellej "plasmamembrane"] == 1} {
-                if {[string equal $typej "mesh"] == 1} {
+            } elseif {[string equal $organellej "plasmamembrane"]} {
+                if {[string equal $typej "mesh"]} {
                     set moduleName [appendn "SurfaceView-" $ni]
                     createSurfaceView $basej $moduleName 0.9 $opts(plasmamembranecolor)
+                }
+            } elseif {[string equal $organellej "lysosome"]} {
+                if {[string equal $typej "mesh"]} {
+                    set moduleName [appendn "SurfaceView-" $ni]
+                    createSurfaceView $basej $moduleName 0 $opts(lysosomecolor)
                 }
             }
         }
@@ -978,7 +1033,7 @@ set opts(nodecolor) "1,0,0"
 
 # Lysosome-specific parameters
 set opts(makeMovieLyso) 0
-set opts(lysocolor) "1,0,0"
+set opts(lysosomecolor) "1,0,1"
 
 # Cilium-specific parameters 
 set opts(makeMovieCilium) 0
@@ -1001,38 +1056,37 @@ set opts(renderWholeCell) 1
 set wrlfiles [lsort [glob $opts(path_in)/*.wrl ]]
 set nwrlfiles [ llength $wrlfiles ]
 
-for {set N 0} {$N < $nwrlfiles} {incr N} {
-    remove -all
-
-    # Get basename and load file
-    set fname [ lindex $wrlfiles $N ]
-    set base [ file tail $fname ]
-    set base [ string trimright $base ".wrl" ]
-    [ load $fname ] setLabel $base
-
-    # Get the organelle type based on the filename 
-    set orglist [ split $base "_" ]
-    set organelle [ lindex $orglist 0 ] 
-    set number [ lindex $orglist 1 ] 
-   
-    # Convert VRML to Surface
-    set module [ concat "Open Inventor Scene To Surface" $number ]
-    echo $module
-    echo $base
-    create HxGeometryToSurface $module
-    $module data connect $base
-    $module action snap
-    $module fire
-    "GeometrySurface" setLabel [ appendn "GeometrySurface" $number ]
-
-    # Run the appropriate workflow
-    if {[string equal $organelle "mitochondrion"] == 1} {
-        if {[info exists fid($organelle)] == 0} { 
-            set fnamecsv($organelle) [appendn $opts(path_out) "/" $organelle ".csv"]
-        } 
-        workflow_$organelle $number
-    }
-}
+#for {set N 0} {$N < $nwrlfiles} {incr N} {
+#
+#    # Get basename and load file
+#    set fname [ lindex $wrlfiles $N ]
+#    set base [ file tail $fname ]
+#    set base [ string trimright $base ".wrl" ]
+#    [ load $fname ] setLabel $base
+#
+#    # Get the organelle type based on the filename 
+#    set orglist [ split $base "_" ]
+#    set organelle [ lindex $orglist 0 ] 
+#    set number [ lindex $orglist 1 ] 
+#   
+#    # Convert VRML to Surface
+#    set module [ concat "Open Inventor Scene To Surface" $number ]
+#    echo $module
+#    echo $base
+#    create HxGeometryToSurface $module
+#    $module data connect $base
+#    $module action snap
+#    $module fire
+#    "GeometrySurface" setLabel [ appendn "GeometrySurface" $number ]
+#
+#    # Run the appropriate workflow
+#    if {[info exists fid($organelle)] == 0} { 
+#        set fnamecsv($organelle) [appendn $opts(path_out) "/" $organelle ".csv"]
+#    } 
+#    workflow_$organelle $number
+#
+#    remove -all
+#}
 
 # Load all outputs (if desired)
 if {$opts(renderWholeCell)} {
