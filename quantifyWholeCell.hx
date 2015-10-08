@@ -738,6 +738,10 @@ proc csvOrganelleMetrics {N labelModule statModule} {
     set volume [$statModule getValue 3 0]
     set volume [expr double($volume) / (10000 ** 3)]
     lappend csvlist $volume
+
+    # SA-V Ratio
+    set savr [expr double($sa) / $volume]
+    lappend csvlist $savr 
     
     # Sphericity 
     set pi 3.1415926535897931
@@ -767,8 +771,36 @@ proc csvOrganelleMetrics {N labelModule statModule} {
     return $csvlist
 }
 
-proc workflow_lysosome {N} {
+proc workflow_lysosome {N write_header} {
     global base opts fnamecsv
+
+    # Open CSV file for editing
+    set fid [open $fnamecsv(lysosome) "a"]
+
+    # Write CSV header if necessary
+    if {$write_header} {
+        puts -nonewline $fid "\"Object Number\","
+        puts -nonewline $fid "\"Centroid (X, um)\","
+        puts -nonewline $fid "\"Centroid (Y, um)\","
+        puts -nonewline $fid "\"Centroid (Z, um)\","
+        puts -nonewline $fid "\"Theta\","
+        puts -nonewline $fid "\"Phi\","
+        puts -nonewline $fid "\"Surface Area (um^2)\","
+        puts -nonewline $fid "\"Volume (um^3)\","
+        puts -nonewline $fid "\"SA-V Ratio (um^-1)\","
+        puts -nonewline $fid "\"Sphericity\","
+        puts -nonewline $fid "\"Anisotropy\","
+        puts -nonewline $fid "\"Elongation\","
+        puts -nonewline $fid "\"Flatness\","
+        puts -nonewline $fid "\"Equivalent Diameter (um)\","
+        puts -nonewline $fid "\"Shape_VA3D\","
+        puts -nonewline $fid "\"Integral of Mean Curvature\","
+        puts -nonewline $fid "\"Integral of Total Curvature\","
+        puts -nonewline $fid "\"Feret Shape 3D\","
+        puts -nonewline $fid "\"Breadth 3D (um)\","
+        puts -nonewline $fid "\"Width 3D (um)\","
+        puts -nonewline $fid "\"Euler Number\""
+    } 
 
     set lysosmooth [appendn "GeometrySurface" $N ".remeshed"]
     set fnamelyso [appendn $opts(path_out) "/qwc_lysosome_mesh_" $N ".am"]
@@ -795,7 +827,6 @@ proc workflow_lysosome {N} {
     set csvlist [csvOrganelleMetrics $N $labelModule $statModule] 
     
     # Write to CSV file
-    set fid [open $fnamecsv(lysosome) "a"]
     puts $fid [regsub -all {\s+} $csvlist ,]
     close $fid
     
@@ -808,7 +839,7 @@ proc workflow_lysosome {N} {
     $lysosmooth exportData "Amira Binary Surface" $fnamelyso
 }
 
-proc workflow_mitochondrion {N} {
+proc workflow_mitochondrion {N write_header} {
     global base opts fnamecsv
 
     set mitosmooth [appendn "GeometrySurface" $N ".smooth"]
@@ -903,16 +934,16 @@ proc workflow_mitochondrion {N} {
     $skelsmooth exportData "AmiraMesh SpatialGraph" $fnameskel
 }
 
-proc workflow_nucleus {N} {
+proc workflow_nucleus {N write_header} {
 
 
 }
 
-proc workflow_nucleolus {N} {
+proc workflow_nucleolus {N write_header} {
 
 }
 
-proc workflow_plasmamembrane {N} {
+proc workflow_plasmamembrane {N write_header} {
     global base opts fnamecsv
 
     set membsmooth [appendn "GeometrySurface" $N ".smooth"]
@@ -949,7 +980,7 @@ proc workflow_plasmamembrane {N} {
     $membsmooth exportData "Amira Binary Surface" $fnamememb   
 }
 
-proc workflow_primarycilium {N} {
+proc workflow_primarycilium {N write_header} {
 
 }
 
@@ -1056,37 +1087,39 @@ set opts(renderWholeCell) 1
 set wrlfiles [lsort [glob $opts(path_in)/*.wrl ]]
 set nwrlfiles [ llength $wrlfiles ]
 
-#for {set N 0} {$N < $nwrlfiles} {incr N} {
-#
-#    # Get basename and load file
-#    set fname [ lindex $wrlfiles $N ]
-#    set base [ file tail $fname ]
-#    set base [ string trimright $base ".wrl" ]
-#    [ load $fname ] setLabel $base
-#
-#    # Get the organelle type based on the filename 
-#    set orglist [ split $base "_" ]
-#    set organelle [ lindex $orglist 0 ] 
-#    set number [ lindex $orglist 1 ] 
-#   
-#    # Convert VRML to Surface
-#    set module [ concat "Open Inventor Scene To Surface" $number ]
-#    echo $module
-#    echo $base
-#    create HxGeometryToSurface $module
-#    $module data connect $base
-#    $module action snap
-#    $module fire
-#    "GeometrySurface" setLabel [ appendn "GeometrySurface" $number ]
-#
-#    # Run the appropriate workflow
-#    if {[info exists fid($organelle)] == 0} { 
-#        set fnamecsv($organelle) [appendn $opts(path_out) "/" $organelle ".csv"]
-#    } 
-#    workflow_$organelle $number
-#
-#    remove -all
-#}
+for {set N 0} {$N < $nwrlfiles} {incr N} {
+
+    # Get basename and load file
+    set fname [ lindex $wrlfiles $N ]
+    set base [ file tail $fname ]
+    set base [ string trimright $base ".wrl" ]
+    [ load $fname ] setLabel $base
+
+    # Get the organelle type based on the filename 
+    set orglist [ split $base "_" ]
+    set organelle [ lindex $orglist 0 ] 
+    set number [ lindex $orglist 1 ] 
+   
+    # Convert VRML to Surface
+    set module [ concat "Open Inventor Scene To Surface" $number ]
+    echo $module
+    echo $base
+    create HxGeometryToSurface $module
+    $module data connect $base
+    $module action snap
+    $module fire
+    "GeometrySurface" setLabel [ appendn "GeometrySurface" $number ]
+
+    # Run the appropriate workflow
+    set write_header 0 
+    if {[info exists fnamecsv($organelle)] == 0} { 
+        set fnamecsv($organelle) [appendn $opts(path_out) "/" $organelle ".csv"]
+        set write_header 1
+    } 
+    workflow_$organelle $number $write_header
+
+    remove -all
+}
 
 # Load all outputs (if desired)
 if {$opts(renderWholeCell)} {
