@@ -771,6 +771,109 @@ proc csvOrganelleMetrics {N labelModule statModule} {
     return $csvlist
 }
 
+proc csvOrganelleWriteHeader {fid} {
+    puts -nonewline $fid "\"Object Number\","
+    puts -nonewline $fid "\"Centroid (X, um)\","
+    puts -nonewline $fid "\"Centroid (Y, um)\","
+    puts -nonewline $fid "\"Centroid (Z, um)\","
+    puts -nonewline $fid "\"Theta\","
+    puts -nonewline $fid "\"Phi\","
+    puts -nonewline $fid "\"Surface Area (um^2)\","
+    puts -nonewline $fid "\"Volume (um^3)\","
+    puts -nonewline $fid "\"SA-V Ratio (um^-1)\","
+    puts -nonewline $fid "\"Sphericity\","
+    puts -nonewline $fid "\"Anisotropy\","
+    puts -nonewline $fid "\"Elongation\","
+    puts -nonewline $fid "\"Flatness\","
+    puts -nonewline $fid "\"Equivalent Diameter (um)\","
+    puts -nonewline $fid "\"Shape_VA3D\","
+    puts -nonewline $fid "\"Integral of Mean Curvature\","
+    puts -nonewline $fid "\"Integral of Total Curvature\","
+    puts -nonewline $fid "\"Feret Shape 3D\","
+    puts -nonewline $fid "\"Breadth 3D (um)\","
+    puts -nonewline $fid "\"Length 3D (um)\","
+    puts -nonewline $fid "\"Width 3D (um)\","
+    puts -nonewline $fid "\"Euler Number\","
+}
+
+proc csvConcatenateMito {} {
+    global opts fnamecsv
+    set fid_out [open $fnamecsv(mitochondrion) "a"]
+    
+    # Write CSV header
+    csvOrganelleWriteHeader $fid_out
+    puts -nonewline $fid_out "\"Number of Branches\","
+    puts -nonewline $fid_out "\"Total Branch Length (um)\","
+    puts -nonewline $fid_out "\"Average Branch Length (um)\","
+    puts -nonewline $fid_out "\"Total Nodes\","
+    puts -nonewline $fid_out "\"Terminal Nodes\","
+    puts -nonewline $fid_out "\"Branch Nodes\","
+    puts -nonewline $fid_out "\"Isolated Nodes\","
+    puts -nonewline $fid_out "\"Number of Points\","
+
+    for {set N 1} {$N <= $opts(mitomaxbranches)} {incr N} {
+        puts -nonewline $fid_out "\"Branch-$N Length (um)\","
+        puts -nonewline $fid_out "\"Branch-$N Theta\","
+        puts -nonewline $fid_out "\"Branch-$N Phi\","
+        puts -nonewline $fid_out "\"Branch-$N Node ID 1\","
+        puts -nonewline $fid_out "\"Branch-$N Node ID 2\","
+        puts -nonewline $fid_out "\"Branch-$N Point ID 1\","
+        puts -nonewline $fid_out "\"Branch-$N Point ID 2\","
+    }
+
+    for {set N 1} {$N <= $opts(mitomaxnodes)} {incr N} {
+        puts -nonewline $fid_out "\"Node-$N X (um)\","
+        puts -nonewline $fid_out "\"Node-$N Y (um)\","
+        puts -nonewline $fid_out "\"Node-$N Z (um)\","
+        puts -nonewline $fid_out "\"Node-$N Coordination Number\","
+    }
+
+    for {set N 1} {$N <= $opts(mitomaxpoints)} {incr N} {
+        puts -nonewline $fid_out "\"Point-$N X (um)\","
+        puts -nonewline $fid_out "\"Point-$N Y (um)\","
+        if {$N == $opts(mitomaxpoints)} {
+            puts -nonewline $fid_out "\"Point-$N Z (um)\""
+        } else {
+            puts -nonewline $fid_out "\"Point-$N Z (um)\","
+        }
+    }
+
+    puts -nonewline $fid_out "\n"
+
+    set nvalbranch [expr $opts(mitomaxbranches) * 7]
+    set nvalnode [expr $opts(mitomaxnodes) * 4]
+    set nvalpoint [expr $opts(mitomaxpoints) * 3]
+
+    foreach fname [lsort [glob -nocomplain -type f $opts(path_out)/mitochondrion.csv????]] {
+        set fid_in [open $fname "r"]
+        set line [read -nonewline $fid_in]
+        set linelist [split $line ',']
+        set nbranchesi [lindex $linelist 22]
+        set nnodesi [lindex $linelist 25]
+        set npointsi [lindex $linelist 29]
+
+        set l1 [lrange $linelist 0 29]
+        set l2end [expr 30 + 7 * $nbranchesi - 1]
+        set l3start [expr $l2end + 1]
+        set l3end [expr $l3start + 4 * $nnodesi - 1]
+        set l4start [expr $l3end + 1]
+        set l2 [lrange $linelist 30 $l2end]
+        set l3 [lrange $linelist $l3start $l3end]
+        set l4 [lrange $linelist $l4start end]
+
+        for {set i [expr [llength $l2] + 1]} {$i <= [expr $opts(mitomaxbranches) * 7]} {incr i} {lappend l2 "NA"}
+        for {set i [expr [llength $l3] + 1]} {$i <= [expr $opts(mitomaxnodes) * 4]} {incr i} {lappend l3 "NA"}
+        for {set i [expr [llength $l4] + 1]} {$i <= [expr $opts(mitomaxpoints) * 3]} {incr i} {lappend l4 "NA"}
+
+        set csvlist [list {*}$l1 {*}$l2 {*}$l3 {*}$l4]
+
+        puts $fid_out [regsub -all {\s+} $csvlist ,]
+        close $fid_in
+        file delete $fname
+    }
+    close $fid_out
+}
+
 proc workflow_lysosome {N write_header} {
     global base opts fnamecsv
 
@@ -779,27 +882,8 @@ proc workflow_lysosome {N write_header} {
 
     # Write CSV header if necessary
     if {$write_header} {
-        puts -nonewline $fid "\"Object Number\","
-        puts -nonewline $fid "\"Centroid (X, um)\","
-        puts -nonewline $fid "\"Centroid (Y, um)\","
-        puts -nonewline $fid "\"Centroid (Z, um)\","
-        puts -nonewline $fid "\"Theta\","
-        puts -nonewline $fid "\"Phi\","
-        puts -nonewline $fid "\"Surface Area (um^2)\","
-        puts -nonewline $fid "\"Volume (um^3)\","
-        puts -nonewline $fid "\"SA-V Ratio (um^-1)\","
-        puts -nonewline $fid "\"Sphericity\","
-        puts -nonewline $fid "\"Anisotropy\","
-        puts -nonewline $fid "\"Elongation\","
-        puts -nonewline $fid "\"Flatness\","
-        puts -nonewline $fid "\"Equivalent Diameter (um)\","
-        puts -nonewline $fid "\"Shape_VA3D\","
-        puts -nonewline $fid "\"Integral of Mean Curvature\","
-        puts -nonewline $fid "\"Integral of Total Curvature\","
-        puts -nonewline $fid "\"Feret Shape 3D\","
-        puts -nonewline $fid "\"Breadth 3D (um)\","
-        puts -nonewline $fid "\"Width 3D (um)\","
-        puts -nonewline $fid "\"Euler Number\""
+        csvOrganelleWriteHeader $fid
+        puts $fid "\n"
     } 
 
     set lysosmooth [appendn "GeometrySurface" $N ".remeshed"]
@@ -842,11 +926,31 @@ proc workflow_lysosome {N write_header} {
 proc workflow_mitochondrion {N write_header} {
     global base opts fnamecsv
 
+    # Open CSV file for editing
+    set fnamecsviter [appendn $fnamecsv(mitochondrion) $N]
+    set fid [open $fnamecsviter "a"]
+
+    # Write CSV header if necessary
+    if {$write_header} {
+        set opts(mitomaxbranches) 0
+        set opts(mitomaxnodes) 0
+        set opts(mitomaxpoints) 0
+    }
+
+    # Set module names and output filenames
     set mitosmooth [appendn "GeometrySurface" $N ".smooth"]
     set skelsmooth [appendn "SmoothTree" $N ".spatialgraph"] 
     set fnamemito [appendn $opts(path_out) "/qwc_mitochondrion_mesh_" $N ".am"]
     set fnameskel [appendn $opts(path_out) "/qwc_mitochondrion_skel_" $N ".am"]
+    set treeModule [appendn "SmoothTree" $N ".spatialgraph"]
+    set treeStatModule [appendn "SmoothTree" $N ".statistics"]
+    set statModule [appendn "GeometrySurface" $N ".statistics"]
+    set labelModule [appendn "GeometrySurface" $N ".Label-Analysis"]
 
+    # Run mitochondrion-specific mesh workflow. (1) Remesh the IMOD input. (2)
+    # Smooth the remeshed surface. (3) Create orthoslices through the smoothed
+    # surface. (4) Create a skeleton through the orthoslices using the TEASAR
+    # algorithm. (5) Smooth the skeleton.
     remeshGeometrySurface [appendn "GeometrySurface" $N] \
         [appendn "Remesh-Surface-" $N] 1 100 0 1
     smoothGeometrySurface [appendn "GeometrySurface" $N ".remeshed"] \
@@ -869,21 +973,27 @@ proc workflow_mitochondrion {N write_header} {
     "Label Analysis" doIt hit
     "Label Analysis" fire
 
+    # Create metric reporting modules
     exportCSV [appendn "GeometrySurface" $N ".smooth"] \
         [appendn "Statistics-" $N "-2"] ""
     exportCSV [appendn "SmoothTree" $N ".spatialgraph"] \
         [appendn "Statistics-" $N "-1"] ""
 
-    set treeModule [appendn "SmoothTree" $N ".spatialgraph"]
-    set treeStatModule [appendn "SmoothTree" $N ".statistics"] 
-    set statModule [appendn "GeometrySurface" $N ".statistics"]
-    set labelModule [appendn "GeometrySurface" $N ".Label-Analysis"]
-
+    # Get standard organelle metrics
     set csvlist [csvOrganelleMetrics $N $labelModule $statModule] 
- 
+
+    # Get max metrics of branches, nodes, and points
+    set nbranches [$treeStatModule getValue 1 1 0] 
+    set nnodes [$treeStatModule getValue 3 0 0]
+    set npoints [$treeModule getNumRows 1]
+    if {$nbranches > $opts(mitomaxbranches)} {set opts(mitomaxbranches) $nbranches}
+    if {$nnodes > $opts(mitomaxnodes)} {set opts(mitomaxnodes) $nnodes}
+    if {$npoints > $opts(mitomaxpoints)} {set opts(mitomaxpoints) $npoints}
+    echo "$nbranches, $nnodes, $npoints"
+    echo "$opts(mitomaxbranches), $opts(mitomaxnodes), $opts(mitomaxpoints)"
+
     # Number of branches
-    set nBranch [$treeStatModule getValue 1 1 0]
-    lappend csvlist $nBranch
+    lappend csvlist $nbranches
  
     # Total branch length
     set blength [$treeStatModule getValue 1 5 0]
@@ -892,6 +1002,9 @@ proc workflow_mitochondrion {N write_header} {
     # Average branch length 
     set avgblength [$treeStatModule getValue 1 2 0]
     lappend csvlist [expr double($avgblength) / 10000] 
+
+    # Total number of nodes
+    lappend csvlist $nnodes
 
     # Number of terminal nodes
     lappend csvlist [$treeStatModule getValue 3 2 0]
@@ -902,25 +1015,49 @@ proc workflow_mitochondrion {N write_header} {
     # Number of isolated nodes (bad)
     lappend csvlist [$treeStatModule getValue 3 4 0]
 
+    # Number of skeleton points
+    lappend csvlist $npoints
+
     # Loop over each branch and append branch-specific values
-    for {set N 0} {$N < $nBranch} {incr N} {
+    for {set N 0} {$N < $nbranches} {incr N} {
         # Values appended are: branch length, branch orientation (theta), branch
-        # orientation (phi), branch node x coord, branch node y coord, branch
-        # node z coord  
+        # orientation (phi), node 1 ID, node 2 ID, first point ID, last point ID
         set blengthN [$treeStatModule getValue 2 1 $N]
         lappend csvlist [expr double($blengthN) / 10000]   
         lappend csvlist [$treeStatModule getValue 2 4 $N]
         lappend csvlist [$treeStatModule getValue 2 5 $N]
-        set bcentxN [$treeModule getValue 0 1 $N]
-        set bcentyN [$treeModule getValue 0 2 $N]
-        set bcentzN [$treeModule getValue 0 3 $N]
-        lappend csvlist [expr double($bcentxN) / 10000]
-        lappend csvlist [expr double($bcentyN) / 10000]
-        lappend csvlist [expr double($bcentzN) / 10000] 
+        lappend csvlist [$treeModule getValue 2 1 $N]
+        lappend csvlist [$treeModule getValue 2 2 $N]
+        set pointstring [$treeModule getValue 2 3 $N]
+        set pointlist [split $pointstring ","]
+        lappend csvlist [lindex $pointlist 0]
+        lappend csvlist [lindex $pointlist end]
+    }
+
+    # Add node coordinates corresponding to node IDs
+    for {set N 0} {$N < $nnodes} {incr N} {
+        set nodex [$treeModule getValue 0 1 $N]
+        set nodey [$treeModule getValue 0 2 $N]
+        set nodez [$treeModule getValue 0 3 $N]
+        set nodex [expr double($nodex) / 10000]
+        set nodey [expr double($nodey) / 10000]
+        set nodez [expr double($nodez) / 10000]
+        lappend csvlist $nodex $nodey $nodez
+        lappend csvlist [$treeModule getValue 0 4 $N]
+    } 
+
+    # Add point coordinates corresponding to point IDs
+    for {set N 0} {$N < $npoints} {incr N} {
+        set pointx [$treeModule getValue 1 2 $N]
+        set pointy [$treeModule getValue 1 3 $N]
+        set pointz [$treeModule getValue 1 4 $N]
+        set pointx [expr double($pointx) / 10000]
+        set pointy [expr double($pointy) / 10000]
+        set pointz [expr double($pointz) / 10000]
+        lappend csvlist $pointx $pointy $pointz
     }
 
     # Write to CSV file
-    set fid [open $fnamecsv(mitochondrion) "a"]
     puts $fid [regsub -all {\s+} $csvlist ,]
     close $fid
 
@@ -945,6 +1082,17 @@ proc workflow_nucleolus {N write_header} {
 
 proc workflow_plasmamembrane {N write_header} {
     global base opts fnamecsv
+
+    # Open CSV file for editing
+    set fid [open $fnamecsv(plasmamembrane) "a"]
+
+    # Write CSV header if necessary
+    if {$write_header} {
+        puts -nonewline $fid "\"Object Number\","
+        puts -nonewline $fid "\"Surface Area (um^2)\","
+        puts -nonewline $fid "\"Volume (um^3)\","
+        puts $fid "\"SA-V Ratio (um^-1)\","                      
+    }
 
     set membsmooth [appendn "GeometrySurface" $N ".smooth"]
     set fnamememb [appendn $opts(path_out) "/qwc_plasmamembrane_mesh_" $N ".am"]
@@ -971,8 +1119,11 @@ proc workflow_plasmamembrane {N write_header} {
     set volume [expr double($volume) / (10000 ** 3)]
     lappend csvlist $volume
 
+    # SA-V Ratio
+    set savr [expr double($sa) / $volume]
+    lappend csvlist $savr
+
     # Write to CSV file
-    set fid [open $fnamecsv(plasmamembrane) "a"]
     puts $fid [regsub -all {\s+} $csvlist ,]
     close $fid
 
@@ -988,7 +1139,7 @@ proc renderWholeCell {N} {
     global opts
     for {set i 0} {$i < $N} {incr i} {
         set ni [format "%04d" $i]
-        set files [lsort [glob -nocomplain $opts(path_out)/qwc*$ni*.am]]
+        set files [lsort [glob -nocomplain -type f $opts(path_out)/qwc*$ni*.am]]
         set nfiles [llength $files]
         for {set j 0} {$j < $nfiles} {incr j} {
             set filej [lindex $files $j] 
@@ -1083,8 +1234,7 @@ set opts(renderWholeCell) 1
 # END INPUT PARAMETERS
 #
 #//
-
-set wrlfiles [lsort [glob $opts(path_in)/*.wrl ]]
+set wrlfiles [lsort [glob -nocomplain -type f $opts(path_in)/*.wrl ]]
 set nwrlfiles [ llength $wrlfiles ]
 
 for {set N 0} {$N < $nwrlfiles} {incr N} {
@@ -1121,7 +1271,11 @@ for {set N 0} {$N < $nwrlfiles} {incr N} {
     remove -all
 }
 
+if {[info exists opts(mitomaxbranches)]} {csvConcatenateMito}
+
 # Load all outputs (if desired)
-if {$opts(renderWholeCell)} {
-    renderWholeCell $nwrlfiles
-}
+#if {$opts(renderWholeCell)} {
+#    renderWholeCell $nwrlfiles
+#}
+
+array unset fnamecsv
