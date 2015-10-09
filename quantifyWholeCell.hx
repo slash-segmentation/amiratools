@@ -743,7 +743,7 @@ proc csvOrganelleMetrics {N labelModule statModule} {
     set savr [expr double($sa) / $volume]
     lappend csvlist $savr 
     
-    # Sphericity 
+    # Sphericity (ranges from 0 to 1, 0 is a perfect sphere)
     set pi 3.1415926535897931
     set sphericity [expr ((double($pi) ** (1/3)) * ((6 * $volume) ** (2/3))) / $sa]
     lappend csvlist $sphericity
