@@ -1,4 +1,4 @@
-# Amira0
+# Amira
 
 #//
 # Function: exportCSV
@@ -745,7 +745,7 @@ proc csvOrganelleMetrics {N labelModule statModule} {
     
     # Sphericity 
     set pi 3.1415926535897931
-    set sphericity [expr ((double($pi) ** 1/3) * ((6 * $volume) ** 2/3)) / $sa]
+    set sphericity [expr ((double($pi) ** (1/3)) * ((6 * $volume) ** (2/3))) / $sa]
     lappend csvlist $sphericity
     
     # Get whole object morphological metrics
@@ -915,8 +915,8 @@ proc workflow_lysosome {N write_header} {
     close $fid
     
     # Make movie if necessary 
-    if {$opts(makeMovieMito)} {
-        setupMovieMito $N
+    if {$opts(makeMovieLyso)} {
+        setupMovieLyso $N
     }
     
     # Export files to AmiraMesh
@@ -1077,7 +1077,54 @@ proc workflow_nucleus {N write_header} {
 }
 
 proc workflow_nucleolus {N write_header} {
+    global base opts fnamecsv
 
+    # Open CSV file for editing
+    set fid [open $fnamecsv(nucleolus) "a"]
+
+    # Write CSV header if necessary
+    if {$write_header} {
+        csvOrganelleWriteHeader $fid
+        puts -nonewline $fid "\n"
+    }
+
+    set nuclsmooth [appendn "GeometrySurface" $N ".smooth"]
+    set fnamenucl [appendn $opts(path_out) "/qwc_nucleolus_mesh_" $N ".am"]
+
+    remeshGeometrySurface [appendn "GeometrySurface" $N] \
+        [appendn "Remesh-Surface-" $N] 1 100 0 1
+    smoothGeometrySurface [appendn "GeometrySurface" $N ".remeshed"] \
+        [appendn "Smooth-Surface-" $N] 10 0.7
+    surface2orthoSlice $nuclsmooth [appendn "Scan-Surface-To-Volume-" $N]
+
+    # Create label analysis module    
+    create HxAnalyzeLabels
+    "Label Analysis" data connect [appendn "GeometrySurface" $N ".scanConverted"]
+    "Label Analysis" measures setState "Nucleolus" Anisotropy BaryCenterX \
+        BaryCenterY BaryCenterZ Elongation Flatness EqDiameter Shape_VA3d \
+        IntegralMeanCurvature IntegralTotalCurvature OrientationTheta \
+        OrientationPhi FeretShape3d Breadth3d Length3d Width3d Euler3D
+    "Label Analysis" interpretation setValue 0
+    "Label Analysis" doIt hit
+    "Label Analysis" fire
+
+    exportCSV $nuclsmooth [appendn "Statistics-" $N "-2"] ""
+
+    set statModule [appendn "GeometrySurface" $N ".statistics"]
+    set labelModule [appendn "GeometrySurface" $N ".Label-Analysis"]
+    set csvlist [csvOrganelleMetrics $N $labelModule $statModule]
+
+    # Write to CSV file
+    puts $fid [regsub -all {\s+} $csvlist ,]
+    close $fid
+
+    # Make movie if necessary 
+    if {$opts(makeMovieNucleolus)} {
+        setupMovieNucleolus $N
+    }
+
+    # Export files to AmiraMesh
+    $nuclsmooth exportData "Amira Binary Surface" $fnamenucl
 }
 
 proc workflow_plasmamembrane {N write_header} {
@@ -1221,6 +1268,10 @@ set opts(lysosomecolor) "1,0,1"
 set opts(makeMovieCilium) 0
 set opts(ciliumcolor) "1,0.8,0.8"
 
+# Nucleolus-specific parameters
+set opts(makeMovieNucleolus) 0
+set opts(nucleoluscolor) "0,1,1"
+
 # Plasma membrane-specific parameters
 set opts(makeMoviePlasmaMembrane) 0
 set opts(plasmamembranecolor) "1,1,1" 
@@ -1268,7 +1319,7 @@ for {set N 0} {$N < $nwrlfiles} {incr N} {
     } 
     workflow_$organelle $number $write_header
 
-    remove -all
+#    remove -all
 }
 
 if {[info exists opts(mitomaxbranches)]} {csvConcatenateMito}
