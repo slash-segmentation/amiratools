@@ -362,9 +362,9 @@ if __name__ == "__main__":
         if not opts.unit:
             opts.unit = modunit
         if ((opts.unit != "nm") and (opts.unit != "um") and
-           (opts.unit != "pix")):
+           (opts.unit != "pix") and (opts.unit != "pixels")):
             usage("Improper unit string for --units.")
-        if modunit is "pix" and (opts.unit is "nm" or opts.unit is "um"):
+        if modunit is "pix" or "pixels"  and (opts.unit is "nm" or opts.unit is "um"):
             usage("Model header units must be set to {0}".format(opts.unit))
         infofile = os.path.join(path_tmp, 'imodinfo.txt')
         infohandle = open(infofile, "w+")
