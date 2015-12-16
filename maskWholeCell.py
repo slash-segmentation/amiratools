@@ -136,13 +136,19 @@ if __name__ == "__main__":
         imgCell = misc.imread(file_tmp + ".tif")
         imgCell = misc.imresize(imgCell, [nRowMrc, nColMrc])
 
-        # Check that images are both binary 
+        # Check image type. If either of the images are empty (all zeros), then
+        # continue to the next iteration of the for loop.
         unique_org = np.unique(imgOrg)
         unique_cell = np.unique(imgCell)
-        if (unique_org.size != 2) or (unique_org[0] != 0):
+
+        if ((unique_org.size == 1) and (unique_org[0] == 0)) or
+            ((unique_cell.size == 1) and (unique_cell[0] == 0)):
+            continue
+
+        if (unique_org.size > 2) or (unique_org[0] != 0):
             usage("Segmentation image is not binary.") 
  
-        if (unique_cell.size != 2) or (unique_cell[0] != 0):
+        if (unique_cell.size > 2) or (unique_cell[0] != 0):
             usage("Mask image is not binary.")
 
         # Check that pixel values are [0, 1]. If not, normalize the image.
