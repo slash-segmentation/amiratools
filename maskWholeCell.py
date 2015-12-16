@@ -171,18 +171,9 @@ if __name__ == "__main__":
         misc.imsave(file_tmp + ".tif", imgMask)
 
         # Run imodauto
-        #cmd = "tif2mrc {0} {1}".format(file_tmp + ".tif", file_tmp + ".mrc")
-        #call(cmd.split())
-
-        if not opts.debug:
-            os.remove(file_tmp + ".tif")
-
         cmd = "imodauto -E 255 -u -R {0} {1} {2}".format(imodautoR,
               file_tmp + ".tif", file_tmp + ".mod")
         call(cmd.split())
-
-        if not opts.debug:
-            os.remove(file_tmp + ".mrc") 
 
         cmd = "imodtrans -tz {0} {1} {1}".format(i, file_tmp + ".mod")
         call(cmd.split())
