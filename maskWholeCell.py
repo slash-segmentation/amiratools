@@ -23,6 +23,10 @@ def usage(errstr):
 if __name__ == "__main__":
     p = OptionParser(usage = "%prog [options] file.mrc file.mod path_seg") 
 
+    p.add_option("--invert", action = "store_true", dest = "invert",
+                 help = "Inverts the mask, such that segmented objects "
+                        "of the masked area are retained.") 
+
     p.add_option("-R", "--R", dest = "pointreduction", metavar = "VALUE",
                  help = "Value for point reduction during contour generation "
                         "with imodauto. Must be a value between 0-1, where 1 "
@@ -51,6 +55,11 @@ if __name__ == "__main__":
     p.add_option("--output", dest = "path_out", metavar = "PATH",
                  help = "Output path to save to (DEFAULT = Current directory.")
 
+    p.add_option("--debug", action = "store_true", dest = "debug",
+                 help = "Runs in debug mode. In debug mode, intermediate files "
+                        "will not be deleted so that they can be checked for "
+                        "validity.")
+     
     (opts, args) = p.parse_args()   
 
     # Set the arguments
@@ -114,36 +123,76 @@ if __name__ == "__main__":
         call(cmd.split())
         cmd = "mrc2tif {0} {1}".format(file_tmp + ".mrc", file_tmp + ".tif")
         call(cmd.split())
-        os.remove(file_tmp + ".mrc")
+
+        if not opts.debug:
+            os.remove(file_tmp + ".mrc")
 
         # Read cell and organelle segmentation images. Resize the cell image
         # to be the same as the organelle image, which is typically larger
+        print filesOrg[i]
         imgOrg = misc.imread(filesOrg[i])
         imgOrg = misc.imresize(imgOrg, [nRowMrc, nColMrc])
+        
         imgCell = misc.imread(file_tmp + ".tif")
         imgCell = misc.imresize(imgCell, [nRowMrc, nColMrc])
-        #imgCell = misc.imresize(imgCell, imgOrg.shape)
 
-        # Find the intersection of imgOrg and imgCell. Write this image file
-        imgMask = np.logical_and(imgCell, imgOrg)
+        # Check that images are both binary 
+        unique_org = np.unique(imgOrg)
+        unique_cell = np.unique(imgCell)
+        if (unique_org.size != 2) or (unique_org[0] != 0):
+            usage("Segmentation image is not binary.") 
+ 
+        if (unique_cell.size != 2) or (unique_cell[0] != 0):
+            usage("Mask image is not binary.")
+
+        # Check that pixel values are [0, 1]. If not, normalize the image.
+        max_pix_val_org = max(np.unique(imgOrg))
+        max_pix_val_cell = max(np.unique(imgCell))
+        
+        if not (max_pix_val_org == 1):
+            print "Normalizing organelle image."
+            imgOrg = np.divide(imgOrg, max_pix_val_org)
+
+        max_pix_val_cell = max(np.unique(imgCell))
+        if not (max_pix_val_cell == 1):
+            print "Normalizing mask image."
+            imgCell = np.divide(imgCell, max_pix_val_cell)
+
+        # If opts.invert is not input, then mask the image by taking the AND
+        # of the two images to produce only the organelles that lie inside
+        # of the mask. Otherwise, keep only the objects that are outside of
+        # the mask.   
+        if opts.invert:
+            imgMask = np.greater(imgOrg, imgCell)
+        else:
+            imgMask = np.logical_and(imgCell, imgOrg)
+
         imgMask.astype("uint8")
         misc.imsave(file_tmp + ".tif", imgMask)
 
         # Run imodauto
-        cmd = "tif2mrc {0} {1}".format(file_tmp + ".tif", file_tmp + ".mrc")
-        call(cmd.split())
-        os.remove(file_tmp + ".tif")
+        #cmd = "tif2mrc {0} {1}".format(file_tmp + ".tif", file_tmp + ".mrc")
+        #call(cmd.split())
+
+        if not opts.debug:
+            os.remove(file_tmp + ".tif")
+
         cmd = "imodauto -E 255 -u -R {0} {1} {2}".format(imodautoR,
-              file_tmp + ".mrc", file_tmp + ".mod")
+              file_tmp + ".tif", file_tmp + ".mod")
         call(cmd.split())
-        os.remove(file_tmp + ".mrc") 
+
+        if not opts.debug:
+            os.remove(file_tmp + ".mrc") 
+
         cmd = "imodtrans -tz {0} {1} {1}".format(i, file_tmp + ".mod")
         call(cmd.split())
         cmd = "model2point -object {0} {1}".format(file_tmp + ".mod",
               file_tmp + ".txt")
         call(cmd.split())
-        os.remove(file_tmp + ".mod")
-        os.remove(file_tmp + ".mod~")
+    
+        os.remove(file_tmp + ".mod~")    
+        if not opts.debug: 
+            os.remove(file_tmp + ".mod")
 
         file_out = os.path.join(path_tmp, "out")        
         if not os.stat(file_tmp + ".txt").st_size == 0:
@@ -160,7 +209,9 @@ if __name__ == "__main__":
                         outfile.write(newline)
                 #sys.stdout.write(newline)
             C = C + ncont
-        os.remove(file_tmp + ".txt")
+
+        if not opts.debug:
+            os.remove(file_tmp + ".txt")
         
     # Post-processing
     edmodcmd = "edmod.py --rmbycont {0} ".format(rmbycont)
@@ -196,4 +247,3 @@ if __name__ == "__main__":
 
     cmd = "imodmesh -CT {0} {0}".format(file_out + "_sort.mod")
     call(cmd.split())  
-
