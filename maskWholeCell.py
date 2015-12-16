@@ -141,8 +141,8 @@ if __name__ == "__main__":
         unique_org = np.unique(imgOrg)
         unique_cell = np.unique(imgCell)
 
-        if ((unique_org.size == 1) and (unique_org[0] == 0)) or
-            ((unique_cell.size == 1) and (unique_cell[0] == 0)):
+        if [((unique_org.size == 1) and (unique_org[0] == 0)) or
+            ((unique_cell.size == 1) and (unique_cell[0] == 0))]:
             continue
 
         if (unique_org.size > 2) or (unique_org[0] != 0):
