@@ -16,7 +16,7 @@ from optparse import OptionParser
 from subprocess import Popen, call, PIPE
 from sys import stderr, exit, argv
 
-# Print erorr messages and exit
+# Print error messages and exit
 def usage(errstr):
     print ""
     print "ERROR: %s" % errstr
@@ -54,7 +54,7 @@ def getMrcStackInfo(file_mrc, string):
     if len(header) is not 3:
         for i in range(0, len(header)):
             headerstr = header[i]
-            positionOfPlusSigns = find(headerstr, '+')
+            positionOfPlusSigns = findPositions(headerstr, '+')
             initialPos = 0
             if len(positionOfPlusSigns) is 0:
                 header.append(headerstr)
@@ -67,8 +67,16 @@ def getMrcStackInfo(file_mrc, string):
     return header
 
 # Finds all positions of a character in a given string
-def find(str, char):
+def findPositions(str, char):
     return [i for i, ltr in enumerate(str) if ltr == char]
+
+def get_blank_spaces(line):
+    lineafter = line.lstrip()
+    lenbefore = len(line)
+    lenafter = len(lineafter)
+    nspaces = lenbefore - lenafter
+    blankspace = " " * nspaces
+    return blankspace
 
 if __name__ == "__main__":
     p = OptionParser(usage = "%prog [options] file.mrc file_in.mod file_out.wrl")
@@ -88,7 +96,6 @@ if __name__ == "__main__":
     if not path_out:
         path_out = os.getcwd()
 
-    path_tmp = os.path.join(path_out, "tmp")
     base_out = os.path.basename(file_out)
 
     # Check validity of positional arguments
@@ -100,12 +107,6 @@ if __name__ == "__main__":
 
     if not os.path.isdir(path_out):
         usage("The output path {0} does not exist.".format(path_out))
-
-    # Create temporary directory in the output path
-    if os.path.isdir(path_tmp):
-        usage("There is already a folder with the name tmp in the output "
-              "path {0}".format(path_out))
-    os.makedirs(path_tmp)
 
     # Parse the scale option if provided. If not provided, extract scale info
     # from the model header. Scale values are typically in Angstroms
@@ -119,13 +120,19 @@ if __name__ == "__main__":
     if len(origin) is not 3:
         print "Not 3"
 
-    # Get the Z scale from the model file
-    asciifile = os.path.join(path_tmp, "ascii.txt")
-    fid = mod2ascii(file_in, asciifile)
-    fid.seek(0)
-    line = matchLine("^scale", fid)
-    modelzscale = float(line.split()[3])
-    fid.close()
+    # Get the Z scale from the model file. Also check for object type.
+    cmd = 'imodinfo -a {0}'.format(file_in)
+    proc = Popen(cmd.split(), stdout = PIPE)
+    typeOpen = False
+    typeScat = False
+    for line in proc.stdout:
+        if re.match('^scale', line.lstrip()):
+            modelzscale = float(line.split()[3])
+        elif re.match('^open', line.lstrip()):
+            typeOpen = True
+        elif re.match('^scattered', line.lstrip()):
+            typeScat = True
+            break
 
     # Print header info
     print "Scale (x,y,z): {0}, {1}, {2}".format(scale[0], scale[1], scale[2])
@@ -136,32 +143,54 @@ if __name__ == "__main__":
     call(cmd.split())
     fid = open(file_out, "r+")
 
-    # Loop through every line of the output VRML file. When necessary, scale
-    # the coordinates appropriately so that the VRML will load into the proper
-    # position when loaded with the corresponding MRC file.
-    coordswitch = 0
-    for line in fileinput.input(file_out, inplace = True):
-        if re.match("^point", line.lstrip()):
-            coordswitch = 1
-            sys.stdout.write(line)
-            continue
-        if re.match("\]", line.lstrip()):
-            coordswitch = 0
-            sys.stdout.write(line)
-            continue
-        if coordswitch:
-            lineafter = line.lstrip()
-            lenbefore = len(line)
-            lenafter = len(lineafter)
-            nspaces = lenbefore - lenafter
-            blankspace = " " * nspaces
-            coordx = float(lineafter.split()[0]) * float(scale[0]) + float(origin[0])
-            coordy = float(lineafter.split()[1]) * float(scale[1]) + float(origin[1])
-            coordz = lineafter.split()[2]
-            coordz = float(coordz.split(",")[0]) * float(scale[2])/modelzscale + float(origin[2])
-            line = "%s%0.1f %0.1f %0.1f,\n" % (blankspace, coordx, coordy, coordz)
-            sys.stdout.write(line)
-        else:
-            sys.stdout.write(line)
+    if (typeOpen and not typeScat) or (not typeOpen and not typeScat):
+        # Loop through every line of the output VRML file. When necessary, scale
+        # the coordinates appropriately so that the VRML will load into the proper
+        # position when loaded with the corresponding MRC file.
+        print "Processing as closed type object."
+        coordswitch = 0
+        for line in fileinput.input(file_out, inplace = True):
+            if re.match("^point", line.lstrip()):
+                coordswitch = 1
+                sys.stdout.write(line)
+                continue
+            if re.match("\]", line.lstrip()):
+                coordswitch = 0
+                sys.stdout.write(line)
+                continue
+            if coordswitch:
+                blankspace = get_blank_spaces(line)
+                line = line.lstrip()
+                coordx = float(line.split()[0]) * float(scale[0]) + float(origin[0])
+                coordy = float(line.split()[1]) * float(scale[1]) + float(origin[1])
+                coordz = line.split()[2]
+                coordz = float(coordz.split(",")[0]) * float(scale[2])/modelzscale + float(origin[2])
+                line = "%s%0.1f %0.1f %0.1f,\n" % (blankspace, coordx, coordy, coordz)
+                sys.stdout.write(line)
+            else:
+                sys.stdout.write(line)
+    elif typeScat:
+        print "Processing as scattered type object."
+        for line in fileinput.input(file_out, inplace = True):
+            if re.match("^translation", line.lstrip()): 
+                # Scale the sphere center to match the input MRC file
+                blankspace = get_blank_spaces(line)
+                line = line.lstrip()
+                coordx = float(line.split()[1]) * float(scale[0]) + float(origin[0])
+                coordy = float(line.split()[2]) * float(scale[1]) + float(origin[1]) 
+                coordz = float(line.split()[3]) * float(scale[2])/modelzscale + float(origin[2]) 
+                line = '%stranslation %0.1f %0.2f %0.1f\n' % (blankspace, coordx, coordy, coordz)
+                sys.stdout.write(line)
+                continue
+            elif re.match("^geometry", line.lstrip()):
+                # Scale the sphere readius to match the input MRC file
+                blankspace = get_blank_spaces(line)
+                line = line.lstrip().split()
+                line[6] = str(float(line[6]) * float(scale[0]))
+                line = blankspace + ' '.join(line)
+                sys.stdout.write(line)
+                continue
+            else:
+                sys.stdout.write(line)
     fid.close()
-    shutil.rmtree(path_tmp)
+    print 'Output written to {0}'.format(file_out)
